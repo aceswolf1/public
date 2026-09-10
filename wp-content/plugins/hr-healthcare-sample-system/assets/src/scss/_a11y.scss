@@ -1,0 +1,59 @@
+/**
+ * Accessibility primitives — Guide §17 / §18.
+ * Screen-reader-only text, focus-visible rings, reduced-motion, body scroll lock.
+ */
+
+.hrh-sample-sr-only {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	padding: 0 !important;
+	margin: -1px !important;
+	overflow: hidden !important;
+	clip: rect(0, 0, 0, 0) !important;
+	white-space: nowrap !important;
+	border: 0 !important;
+}
+
+.hrh-sample-root,
+.hrh-sample-cart-icon {
+	:focus {
+		outline: none;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--hrh-sample-color-focus, #0b5fff);
+		outline-offset: 2px;
+	}
+}
+
+.hrh-sample-admin {
+	:focus {
+		outline: none;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--hrh-sample-color-focus, #0b5fff);
+		outline-offset: 2px;
+	}
+}
+
+/* Body scroll lock while a dialog is open (§17). */
+html.hrh-sample-dialog-open,
+body.hrh-sample-dialog-open {
+	overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.hrh-sample-root *,
+	.hrh-sample-root *::before,
+	.hrh-sample-root *::after,
+	.hrh-sample-admin *,
+	.hrh-sample-admin *::before,
+	.hrh-sample-admin *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

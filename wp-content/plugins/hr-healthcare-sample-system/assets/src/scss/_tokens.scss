@@ -1,0 +1,57 @@
+/**
+ * Design tokens — theme-font inheritance + brand color/spacing.
+ * Guide §18: inherit theme typography; alias Elementor globals where present.
+ *
+ * Surfaces receive tokens via `.hrh-sample-root`. Frontend JS adds that class
+ * to PHP-printed modal/cart shells (ProductModal / CartShortcodes omit it).
+ */
+
+.hrh-sample-root {
+	/* Typography — never hardcode a font stack; inherit the theme cascade. */
+	--hrh-sample-font: inherit;
+	--hrh-sample-heading-font: var(--e-global-typography-primary-font-family, inherit);
+	--hrh-sample-body-font: var(--e-global-typography-text-font-family, inherit);
+
+	font-family: var(--hrh-sample-font);
+
+	/* Brand colors (dark navy + green from mockups) — single seam for hex values. */
+	--hrh-sample-color-navy: #0b1f33;
+	--hrh-sample-color-navy-soft: #16324d;
+	--hrh-sample-color-green: #2f7d4a;
+	--hrh-sample-color-green-hover: #27663d;
+	--hrh-sample-color-surface: #ffffff;
+	--hrh-sample-color-surface-muted: #f5f7f9;
+	--hrh-sample-color-border: #d5dde5;
+	--hrh-sample-color-text: #1a1a1a;
+	--hrh-sample-color-text-muted: #5a6a7a;
+	--hrh-sample-color-danger: #b42318;
+	--hrh-sample-color-focus: #0b5fff;
+
+	/* Spacing scale */
+	--hrh-sample-space-1: 0.25rem;
+	--hrh-sample-space-2: 0.5rem;
+	--hrh-sample-space-3: 0.75rem;
+	--hrh-sample-space-4: 1rem;
+	--hrh-sample-space-5: 1.5rem;
+	--hrh-sample-space-6: 2rem;
+	--hrh-sample-space-8: 3rem;
+
+	/* Radii / elevation */
+	--hrh-sample-radius-sm: 0.25rem;
+	--hrh-sample-radius-md: 0.5rem;
+	--hrh-sample-radius-lg: 0.75rem;
+	--hrh-sample-shadow-md: 0 8px 24px rgba(11, 31, 51, 0.16);
+}
+
+/* Cart icon often sits outside a surface root (header shortcode). */
+.hrh-sample-cart-icon {
+	--hrh-sample-font: inherit;
+	--hrh-sample-color-navy: #0b1f33;
+	--hrh-sample-color-green: #2f7d4a;
+	--hrh-sample-color-surface: #ffffff;
+	--hrh-sample-color-border: #d5dde5;
+	--hrh-sample-color-focus: #0b5fff;
+	--hrh-sample-radius-md: 0.5rem;
+	--hrh-sample-space-2: 0.5rem;
+	font-family: var(--hrh-sample-font);
+}

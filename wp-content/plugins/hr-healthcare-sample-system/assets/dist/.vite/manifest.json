@@ -1,0 +1,27 @@
+{
+  "assets/src/images/product-placeholder.png": {
+    "file": "assets/product-placeholder-DSuYAMaS.png",
+    "src": "assets/src/images/product-placeholder.png"
+  },
+  "assets/src/js/admin.js": {
+    "file": "assets/admin-ohFLNX-i.js",
+    "name": "admin",
+    "src": "assets/src/js/admin.js",
+    "isEntry": true,
+    "css": [
+      "assets/admin-8AcgqeSS.css"
+    ]
+  },
+  "assets/src/js/frontend.js": {
+    "file": "assets/frontend-nlM2dg1d.js",
+    "name": "frontend",
+    "src": "assets/src/js/frontend.js",
+    "isEntry": true,
+    "css": [
+      "assets/frontend-BtbWCXkz.css"
+    ],
+    "assets": [
+      "assets/product-placeholder-DSuYAMaS.png"
+    ]
+  }
+}

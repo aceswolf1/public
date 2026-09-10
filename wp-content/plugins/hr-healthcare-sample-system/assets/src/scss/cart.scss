@@ -1,0 +1,152 @@
+/**
+ * Cart dialog + summary styles.
+ * Distinct from admin.scss so frontend ships its own CSS chunk.
+ * Tokens/font inherit via _tokens on `.hrh-sample-cart` / summary (§18).
+ */
+
+@use 'ui';
+
+.hrh-sample-cart-icon {
+	appearance: none;
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	padding: var(--hrh-sample-space-2);
+	border: 1px solid var(--hrh-sample-color-border);
+	border-radius: var(--hrh-sample-radius-md);
+	background: var(--hrh-sample-color-surface);
+	color: var(--hrh-sample-color-navy);
+	cursor: pointer;
+	font: inherit;
+}
+
+.hrh-sample-cart-icon__count {
+	position: absolute;
+	top: -0.35rem;
+	right: -0.35rem;
+	min-width: 1.25rem;
+	height: 1.25rem;
+	padding: 0 0.3rem;
+	border-radius: 999px;
+	background: var(--hrh-sample-color-green);
+	color: #fff;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	text-align: center;
+}
+
+.hrh-sample-cart-icon__count[hidden] {
+	display: none !important;
+}
+
+.hrh-sample-cart {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--hrh-sample-space-4);
+	font-family: var(--hrh-sample-font, inherit);
+	color: var(--hrh-sample-color-text, #1a1a1a);
+}
+
+.hrh-sample-cart[hidden] {
+	display: none !important;
+}
+
+.hrh-sample-cart__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(11, 31, 51, 0.55);
+}
+
+.hrh-sample-cart__dialog {
+	position: relative;
+	z-index: 1;
+	width: min(40rem, 100%);
+	max-height: min(90vh, 48rem);
+	overflow: auto;
+	border-radius: var(--hrh-sample-radius-lg);
+	background: var(--hrh-sample-color-surface);
+	box-shadow: var(--hrh-sample-shadow-md);
+	padding: var(--hrh-sample-space-5);
+}
+
+.hrh-sample-cart__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--hrh-sample-space-3);
+	margin-bottom: var(--hrh-sample-space-4);
+}
+
+.hrh-sample-cart__header h2 {
+	margin: 0;
+	font-family: var(--hrh-sample-heading-font);
+	color: var(--hrh-sample-color-navy);
+	font-size: 1.35rem;
+}
+
+.hrh-sample-cart__close {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: var(--hrh-sample-color-text-muted);
+	font: inherit;
+	font-size: 1.5rem;
+	line-height: 1;
+	cursor: pointer;
+	padding: var(--hrh-sample-space-1);
+}
+
+.hrh-sample-cart__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.hrh-sample-cart__status {
+	margin: 0 0 var(--hrh-sample-space-4);
+	padding: var(--hrh-sample-space-3) var(--hrh-sample-space-4);
+	border: 1px solid var(--hrh-sample-color-border);
+	border-radius: var(--hrh-sample-radius-md);
+	background: var(--hrh-sample-color-surface-muted);
+	color: var(--hrh-sample-color-text);
+
+	p {
+		margin: 0 0 var(--hrh-sample-space-2);
+	}
+
+	.hrh-sample-btn {
+		margin-top: var(--hrh-sample-space-2);
+	}
+}
+
+.hrh-sample-cart__status[hidden] {
+	display: none !important;
+}
+
+.hrh-sample-cart__footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--hrh-sample-space-2);
+	margin-top: var(--hrh-sample-space-5);
+	padding-top: var(--hrh-sample-space-4);
+	border-top: 1px solid var(--hrh-sample-color-border);
+}
+
+/* Inline summary shortcode — same list, no dialog chrome. */
+.hrh-sample-cart-summary {
+	font-family: var(--hrh-sample-font, inherit);
+	color: var(--hrh-sample-color-text, #1a1a1a);
+
+	.hrh-sample-cart__list {
+		margin: 0;
+		padding: 0;
+	}
+}

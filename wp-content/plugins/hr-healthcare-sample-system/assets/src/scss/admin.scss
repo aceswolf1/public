@@ -1,0 +1,47 @@
+/**
+ * Admin settings/importer styles.
+ * Intentionally distinct from modal/cart so Vite emits a separate CSS chunk.
+ * Re-declares brand tokens on `.hrh-sample-admin` (admin page is not a frontend root).
+ */
+
+@use 'tokens';
+@use 'a11y';
+
+.hrh-sample-admin {
+	/* Mirror brand tokens so admin works without `.hrh-sample-root`. */
+	--hrh-sample-font: inherit;
+	--hrh-sample-heading-font: var(--e-global-typography-primary-font-family, inherit);
+	--hrh-sample-color-navy: #0b1f33;
+	--hrh-sample-color-green: #2f7d4a;
+	--hrh-sample-color-surface: #ffffff;
+	--hrh-sample-color-border: #d5dde5;
+	--hrh-sample-color-text: #1a1a1a;
+	--hrh-sample-color-text-muted: #5a6a7a;
+	--hrh-sample-color-focus: #0b5fff;
+
+	font-family: var(--hrh-sample-font, inherit);
+	color: var(--hrh-sample-color-text, #1a1a1a);
+
+	.hrh-sample-admin__panel {
+		margin: 1rem 0;
+		padding: 1rem 1.25rem;
+		border: 1px solid var(--hrh-sample-color-border, #d5dde5);
+		border-radius: 0.5rem;
+		background: #fff;
+	}
+
+	.hrh-sample-admin__title {
+		margin: 0 0 0.75rem;
+		color: var(--hrh-sample-color-navy, #0b1f33);
+	}
+
+	.hrh-sample-admin__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.hrh-sample-admin__group-body[hidden] {
+		display: none !important;
+	}
+}

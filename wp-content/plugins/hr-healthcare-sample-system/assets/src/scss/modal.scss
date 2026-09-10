@@ -1,0 +1,158 @@
+/**
+ * Product-modal styles.
+ * Distinct from admin.scss so frontend ships its own CSS chunk.
+ * Tokens/font inherit via _tokens on `.hrh-sample-modal` itself (§18).
+ */
+
+@use 'ui';
+
+.hrh-sample-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--hrh-sample-space-4);
+	font-family: var(--hrh-sample-font, inherit);
+	color: var(--hrh-sample-color-text, #1a1a1a);
+}
+
+.hrh-sample-modal[hidden] {
+	display: none !important;
+}
+
+.hrh-sample-modal__backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(11, 31, 51, 0.55);
+}
+
+.hrh-sample-modal__dialog {
+	position: relative;
+	z-index: 1;
+	width: min(56rem, 100%);
+	max-height: min(90vh, 52rem);
+	overflow: auto;
+	border-radius: var(--hrh-sample-radius-lg);
+	background: var(--hrh-sample-color-surface);
+	box-shadow: var(--hrh-sample-shadow-md);
+	padding: var(--hrh-sample-space-5);
+}
+
+.hrh-sample-modal__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--hrh-sample-space-3);
+	margin-bottom: var(--hrh-sample-space-4);
+}
+
+.hrh-sample-modal__title {
+	margin: 0;
+	font-family: var(--hrh-sample-heading-font);
+	color: var(--hrh-sample-color-navy);
+	font-size: 1.35rem;
+}
+
+.hrh-sample-modal__close {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: var(--hrh-sample-color-text-muted);
+	font: inherit;
+	font-size: 1.5rem;
+	line-height: 1;
+	cursor: pointer;
+	padding: var(--hrh-sample-space-1);
+}
+
+.hrh-sample-steps {
+	display: flex;
+	gap: var(--hrh-sample-space-3);
+	list-style: none;
+	margin: 0 0 var(--hrh-sample-space-5);
+	padding: 0;
+	color: var(--hrh-sample-color-text-muted);
+	font-size: 0.9rem;
+
+	li {
+		position: relative;
+		padding-bottom: var(--hrh-sample-space-2);
+	}
+
+	/* Active step — color + underline (not color-only). */
+	li.is-active,
+	li[aria-current='step'] {
+		color: var(--hrh-sample-color-navy);
+		font-weight: 600;
+		border-bottom: 2px solid var(--hrh-sample-color-green);
+	}
+
+	/* Completed steps — checkmark + muted navy (not color-only). */
+	li.is-complete {
+		color: var(--hrh-sample-color-navy-soft);
+		font-weight: 600;
+
+		&::before {
+			content: '✓ ';
+			color: var(--hrh-sample-color-green);
+		}
+	}
+}
+
+.hrh-sample-modal__layout {
+	display: grid;
+	grid-template-columns: minmax(10rem, 16rem) 1fr;
+	gap: var(--hrh-sample-space-5);
+}
+
+.hrh-sample-modal__media img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border-radius: var(--hrh-sample-radius-md);
+	background: var(--hrh-sample-color-surface-muted);
+}
+
+.hrh-sample-step[hidden] {
+	display: none !important;
+}
+
+.hrh-sample-step__actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--hrh-sample-space-2);
+	margin-top: var(--hrh-sample-space-5);
+}
+
+.hrh-sample-success {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 3.5rem;
+	height: 3.5rem;
+	margin-bottom: var(--hrh-sample-space-3);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--hrh-sample-color-green) 18%, white);
+	color: var(--hrh-sample-color-green);
+	font-size: 1.75rem;
+	font-weight: 700;
+
+	&:empty::before {
+		content: '✓';
+	}
+}
+
+.hrh-sample-success__msg {
+	margin: 0 0 var(--hrh-sample-space-4);
+	font-size: 1.1rem;
+	color: var(--hrh-sample-color-navy);
+}
+
+@media (max-width: 640px) {
+	.hrh-sample-modal__layout {
+		grid-template-columns: 1fr;
+	}
+}
