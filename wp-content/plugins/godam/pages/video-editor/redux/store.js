@@ -1,0 +1,65 @@
+/**
+ * External dependencies
+ */
+import { configureStore } from '@reduxjs/toolkit';
+/**
+ * Internal dependencies
+ */
+import videoReducer from './slice/videoSlice';
+
+import { videosAPI } from './api/video';
+import { videoEditorAPI } from './api/video-editor';
+import { pollsAPI } from './api/polls';
+import { attachmentAPI } from './api/attachment';
+import { transcriptionAPI } from './api/transcription';
+import { gravityFormsAPI } from './api/gravity-forms';
+import { contactForm7Api } from './api/cf7-forms';
+import { wpFormsApi } from './api/wpforms';
+import { jetpackFormsApi } from './api/jetpack-forms';
+import { sureformsApi } from './api/sureforms';
+import { forminatorFormsApi } from './api/forminator-forms';
+import { fluentFormsApi } from './api/fluent-forms';
+import { everestFormsApi } from './api/everest-forms';
+import { ninjaFormsApi } from './api/ninja-forms';
+import { metformApi } from './api/metform';
+import { analyticsApi } from '../../analytics/redux/api/analyticsApi';
+
+export default configureStore( {
+	reducer: {
+		videoReducer,
+		[ videosAPI.reducerPath ]: videosAPI.reducer,
+		[ videoEditorAPI.reducerPath ]: videoEditorAPI.reducer,
+		[ pollsAPI.reducerPath ]: pollsAPI.reducer,
+		[ attachmentAPI.reducerPath ]: attachmentAPI.reducer,
+		[ transcriptionAPI.reducerPath ]: transcriptionAPI.reducer,
+		[ gravityFormsAPI.reducerPath ]: gravityFormsAPI.reducer,
+		[ contactForm7Api.reducerPath ]: contactForm7Api.reducer,
+		[ wpFormsApi.reducerPath ]: wpFormsApi.reducer,
+		[ jetpackFormsApi.reducerPath ]: jetpackFormsApi.reducer,
+		[ sureformsApi.reducerPath ]: sureformsApi.reducer,
+		[ forminatorFormsApi.reducerPath ]: forminatorFormsApi.reducer,
+		[ fluentFormsApi.reducerPath ]: fluentFormsApi.reducer,
+		[ everestFormsApi.reducerPath ]: everestFormsApi.reducer,
+		[ ninjaFormsApi.reducerPath ]: ninjaFormsApi.reducer,
+		[ metformApi.reducerPath ]: metformApi.reducer,
+		[ analyticsApi.reducerPath ]: analyticsApi.reducer,
+	},
+	middleware: ( getDefaultMiddleware ) => getDefaultMiddleware().concat(
+		videosAPI.middleware,
+		videoEditorAPI.middleware,
+		pollsAPI.middleware,
+		attachmentAPI.middleware,
+		transcriptionAPI.middleware,
+		gravityFormsAPI.middleware,
+		contactForm7Api.middleware,
+		wpFormsApi.middleware,
+		jetpackFormsApi.middleware,
+		sureformsApi.middleware,
+		forminatorFormsApi.middleware,
+		fluentFormsApi.middleware,
+		everestFormsApi.middleware,
+		ninjaFormsApi.middleware,
+		metformApi.middleware,
+		analyticsApi.middleware,
+	),
+} );

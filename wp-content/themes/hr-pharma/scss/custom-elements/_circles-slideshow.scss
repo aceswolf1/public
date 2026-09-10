@@ -1,0 +1,188 @@
+.bubble-wrapper {
+  position: relative;
+  // width: 100%;
+  width: 600px;
+  height: 340px;
+  // background: #eee;
+  float: right;
+  margin-right: 50px;
+
+  @include mobile (900px) {
+    margin-right: 0;
+  }
+  
+  &:after {
+    content: '';
+    position: absolute;
+    top: -10px;
+    right: 50%;
+    bottom: -10px;
+    left: -10px;
+    background: linear-gradient(to right, rgba(#fff, 100%), rgba(#fff, 100%) 10%, rgba(#fff, 0%) 100%);
+  }
+}
+
+.bubble {
+  border-radius: 100%;
+  position: absolute;
+  background-size: cover;
+  
+  &-animate {
+    animation: circleslider 30s linear infinite;
+    animation-timing-function: cubic-bezier(.56,-0.33,.5,1.23);   
+  
+    &--1 {    
+      animation-delay: 0;
+    }
+
+    &--2 {    
+      animation-delay: -5s;
+    }
+
+    &--3 {    
+      animation-delay: -10s;
+    }
+
+    &--4 {    
+      animation-delay: -15s;
+    }
+
+    &--5 {    
+      animation-delay: -20s;
+    }
+
+    &--6 {    
+      animation-delay: -25s;
+    }
+  }
+  
+  &-position--0 {
+    width: 0;
+    height: 0;
+    
+    top: 0;
+    right: 0;
+  }
+  
+  &-position--1 {
+    width: 250px;
+    height: 250px;
+    
+    top: 90px;
+    right: 0;
+  }
+  
+  &-position--2 {
+    width: 100px;
+    height: 100px;
+    
+    top: 0;
+    right: 167px;    
+  }
+  
+  &-position--3 {
+    width: 150px;
+    height: 150px;
+    
+    top: 65px;
+    right: 250px;
+  }
+  
+  &-position--4 {
+    width: 90px;
+    height: 90px;
+    
+    top: 225px;
+    right: 257px;
+  }
+  
+  &-position--5 {
+    width: 150px;
+    height: 150px;
+    
+    top: 190px;
+    right: 360px;
+  }
+  
+  &-position--6 {
+    width: 190px;
+    height: 190px;
+    
+    top: 0;
+    right: 410px;
+  }
+  
+  &-position--7 {
+    width: 0;
+    height: 0;
+    
+    top: 0;
+    right: 0;
+  }
+  
+  @include keyframes(circleslider) {
+    0%, 13% {
+      width: 190px;
+      height: 190px;
+
+      top: 0;
+      right: 410px;
+    }
+    16%, 29% {
+      width: 150px;
+      height: 150px;
+
+      top: 190px;
+      right: 360px;
+    }
+    32%, 45% {
+      width: 90px;
+      height: 90px;
+
+      top: 225px;
+      right: 257px;
+    }
+    48%, 61% {
+      width: 150px;
+      height: 150px;
+
+      top: 65px;
+      right: 250px;
+    }
+    64%, 77% {
+      width: 100px;
+      height: 100px;
+
+      top: 0;
+      right: 167px;  
+    }
+    80%, 93% {
+      width: 250px;
+      height: 250px;
+
+      top: 90px;
+      right: 0;
+    }
+    96% {
+      width: 0;
+      height: 0;
+
+      top: 320px;
+      right: 0;
+    }
+    96.01% {
+      width: 0;
+      height: 0;
+
+      top: 0;
+      right: 600px;
+    }
+    100% {
+      width: 190px;
+      height: 190px;
+
+      top: 0;
+      right: 410px;
+    }
+  }
+}

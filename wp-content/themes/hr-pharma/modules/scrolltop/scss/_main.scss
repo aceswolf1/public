@@ -1,0 +1,38 @@
+.arrow-up {
+	&__wrapper {	
+		opacity: 0;		
+		z-index: 9999;
+		background: $secondary;
+		padding: 0;
+		border-radius: 100%;
+		display: inline-block;
+		width: 42px;
+		height: 42px;
+		position: fixed;
+		bottom: 20px;
+		right: 20px;
+		cursor: pointer;
+		-webkit-transition: opacity 250ms;
+				transition: opacity 250ms;
+
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
+
+		&--state-visible {
+			opacity: .7;
+			pointer-events: auto;
+		}
+			
+		&:hover {
+			opacity: 1;
+		}
+	}
+
+	&__btn {	
+		color: #fff;
+		width: 1.2em !important;
+		height: 1.2em !important;
+	}
+}

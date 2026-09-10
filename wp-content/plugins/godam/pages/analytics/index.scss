@@ -1,0 +1,963 @@
+/* stylelint-disable scss/at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Video Editor Set up */
+
+.tooltip {
+	position: absolute;
+	background: rgba(0, 0, 0, 0.75);
+	color: #fff;
+	padding: 5px 10px;
+	border-radius: 5px;
+	font-size: 12px;
+	pointer-events: none; /* Prevents interfering with mouse events */
+	opacity: 0; /* Initially hidden */
+	transition: opacity 0.2s ease-in-out;
+}
+
+#root-video-analytics, #root-video-dashboard {
+
+	&.free-user {
+		height: calc(100vh - var(--wp-admin--admin-bar--height, 0));
+
+		.api-key-overlay {
+			background-size: 100% 100% !important;
+			background-position: 0 0 !important;
+			margin-left: -20px;
+			width: -webkit-fill-available;
+		}
+	}
+
+	background-color: #fff;
+
+	#analytics-content {
+		max-width: 1440px;
+		margin: 0 auto;
+		width: 100%;
+	}
+
+	// Video JS styles
+	.video-analytics-container {
+
+		@apply flex bg-white justify-between py-6 md:px-10 pt-8;
+
+		.analytics-info-container {
+
+			.analytics-info {
+
+				width: calc(50% - 8px);
+
+				@media screen and (min-width: 1024px) {
+					width: 100%;
+					max-width: 350px;
+				}
+
+				@media screen and (min-width: 1535px) {
+					max-width: 350px;
+				}
+
+				@media screen and (max-width: 640px) {
+					width: 100%;
+				}
+			}
+		}
+	}
+
+	.country-heatmap-container {
+
+		@apply bg-white overflow-auto h-[400px];
+	}
+
+	.media-frame-menu,
+	.media-frame-router,
+	.media-frame-content .upload-ui {
+		display: none !important;
+	}
+
+	.analytics-info-container {
+		display: flex;
+		gap: 12px;
+
+		.analytics-info {
+			display: flex;
+			align-items: center;
+			padding: 9px 12px;
+			border-radius: 12px;
+
+			.analytics-single-info {
+				display: flex;
+				flex-direction: column;
+				gap: 9px;
+				width: 100%;
+			}
+
+			.analytics-info-heading {
+				font-size: 16px;
+				display: flex;
+				align-items: center;
+				font-weight: 400;
+				gap: 5px;
+
+				.tooltip-container {
+					display: flex;
+					align-items: center;
+				}
+			}
+
+			.metric-change {
+				font-size: 12px;
+				padding: 2px 11px;
+				border-radius: 12px;
+			}
+
+			.change-drop {
+				background-color: #FFF0F0;
+				color: #B91C1C;
+			}
+
+			.change-rise {
+				background-color: #E5F6EA;
+				color: #15803D;
+			}
+
+			p {
+				margin-block-end: unset;
+				margin-block-start: unset;
+				font-size: 12px;
+			}
+
+			.single-metrics-value {
+				font-weight: 600;
+				font-size: 20px;
+				line-height: 2rem;
+				white-space: nowrap;
+			}
+		}
+	}
+
+	.godam-analytics-back-btn:hover {
+		color: var(--wp-admin-theme-color, #ab3a6c);
+	}
+
+	.godam-analytics-back-btn:focus {
+		box-shadow: none;
+	}
+
+	// Video Chart styles
+	.video-container {
+		position: relative;
+		width: 100%;
+		max-width: 830px;
+
+		@media screen and (max-width: 1024px) {
+			max-width: 100%;
+		}
+	}
+
+	.video-chart-container {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		height: 75%;
+		pointer-events: none;
+
+		#chart-container {
+			pointer-events: auto;
+		}
+	}
+
+	.comparison-video-container {
+		height: 300px;
+	}
+
+	.original-video-chart-container {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		height: 100%;
+		width: 100%;
+	}
+
+	#chart-container, #original-chart-container, #comparison-chart-container {
+		width: 100%;
+		height: 100%;
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+
+		svg {
+			width: 100%;
+			height: 100%;
+			display: block;
+		}
+
+		.line {
+			fill: none;
+			stroke: rgba(255, 246, 0, 1);
+			stroke-width: 2px;
+		}
+
+		.area {
+			fill: #ACAA3AB3;
+			opacity: 0.7;
+		}
+
+		.line-chart-tooltip, .performance-line-chart-tooltip, .comparison-line-chart-tooltip {
+			position: absolute;
+			background-color: #fff;
+			border: 1px solid #ccc;
+			padding: 5px;
+			border-radius: 4px;
+			pointer-events: none;
+			white-space: nowrap;
+			font-size: 12px;
+			box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+			text-align: center;
+			opacity: 0;
+			transform: translateX(-50%);
+		}
+
+		.line-chart-tooltip::after, .performance-line-chart-tooltip::after {
+			content: "";
+			position: absolute;
+			border-width: 8px;
+			border-style: solid;
+			border-color: #fff transparent transparent transparent;
+			left: 50%;
+			bottom: -16px;
+			transform: translateX(-50%);
+		}
+
+		.hover-line {
+			stroke: #fff;
+			stroke-width: 1.5px;
+			stroke-dasharray: 4 2;
+			opacity: 0;
+		}
+
+		.focus-circle {
+			fill: rgba(255, 200, 0, 1);
+			stroke: #fff;
+			stroke-width: 2px;
+			r: 3.5;
+		}
+	}
+
+	#comparison-line-chart, #performance-line-chart {
+		top: 0 !important;
+	}
+
+	#heatmap-container {
+		max-width: 830px;
+		margin-top: 2rem;
+
+	.heatmap-tooltip {
+		position: absolute;
+		position: absolute;
+		background-color: #fff;
+		border: 1px solid #ccc;
+		padding: 5px;
+		border-radius: 4px;
+		pointer-events: none;
+		white-space: nowrap;
+		font-size: 12px;
+		box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+		text-align: center;
+		opacity: 0;
+		z-index: 999;
+
+		&::after {
+			content: "";
+			position: absolute;
+			border-width: 8px;
+			border-style: solid;
+			border-color: #fff transparent transparent transparent;
+			left: 50%;
+			bottom: -16px;
+			transform: translateX(-50%);
+		}
+
+		&::before {
+			content: "";
+			position: absolute;
+			border-width: 9px;
+			border-style: solid;
+			border-color: rgba(0, 0, 0, 0.2) transparent transparent transparent;
+			left: 50%;
+			bottom: -21px;
+			transform: translateX(-50%);
+			filter: blur(2px);
+			z-index: -1;
+		}
+	}
+
+	.heatmap-vertical-line {
+		stroke: #000;
+		stroke-dasharray: 4;
+		stroke-width: 2px;
+	}
+	}
+}
+
+.not-safari {
+
+	#root-video-analytics, #root-video-dashboard {
+
+		&.free-user {
+
+			.api-key-overlay {
+				background-size: 100% calc(100% - 32px);
+				background-position: center 32px;
+			}
+		}
+	}
+}
+
+.blurred {
+	filter: blur(5px);
+	pointer-events: none;
+}
+
+.api-key-overlay, .screen-size-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: rgba(0, 0, 0, 0.4);
+	backdrop-filter: blur(5px);
+	z-index: 99;
+}
+
+.api-key-overlay--upgrade {
+	background-size: 100% calc(100% - 32px);
+	background-repeat: no-repeat;
+	background-position: center 32px;
+}
+
+.api-key-message, .screen-size-message {
+	background: #fff;
+	padding: 20px 40px;
+	border-radius: 5px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+	text-align: center;
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.api-key-message a {
+	color: var(--wp-admin-theme-color, #ab3a6c);
+	text-decoration: none;
+	font-weight: 600;
+}
+
+.api-key-overlay-banner {
+	display: flex;
+	flex-direction: column;
+	margin: 0 2rem;
+	font-size: 1rem;
+	font-weight: 400;
+
+	&-header {
+		font-size: 1.25rem;
+		font-weight: 500;
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	&-header a {
+		margin: auto;
+	}
+
+	&-footer a {
+		margin: auto;
+	}
+
+	&-footer {
+		font-size: 0.975rem;
+		font-weight: 400;
+		margin-top: 0;
+	}
+
+	// Style the buy button to not take full width
+	a.components-button.godam-button.is-primary {
+		align-self: center;
+		width: auto;
+		display: inline-block;
+	}
+}
+
+.api-key-message a:hover {
+	text-decoration: underline;
+}
+
+.api-key-overlay-banner-header a:hover {
+	text-decoration: none;
+}
+
+.hidden {
+	display: none;
+}
+
+#root-video-analytics .hidden{
+	display: none;
+}
+
+#tooltip-container {
+	position: relative;
+	display: inline-block;
+	cursor: pointer;
+}
+
+#root-video-analytics #tooltip-container .tooltip-text,
+#root-video-dashboard #tooltip-container .tooltip-text {
+	position: absolute;
+	top: 100%;
+    left: -95%;
+	visibility: hidden;
+	background-color: rgba(0, 0, 0, 0.8);
+	color: #fff;
+	text-align: center;
+	padding: 8px;
+	border-radius: 5px;
+	min-width: 110px;
+	width: max-content;
+	max-width: 200px;
+	z-index: 100;
+	pointer-events: none;
+	font-size: 12px;
+	line-height: 1.2;
+	opacity: 0;
+	transition: opacity 0.2s ease, visibility 0.2s ease;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+}
+
+#root-video-analytics #tooltip-container:hover .tooltip-text,
+#root-video-dashboard #tooltip-container:hover .tooltip-text {
+	visibility: visible;
+	opacity: 1;
+}
+
+.bar-container {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            height: 4px; /* Adjust thickness */
+            background-color: #d3d3d3;
+        }
+
+        .bar {
+            height: 100%;
+            background-color: #00f;
+        }
+
+.subheading-container {
+	display: flex;
+	align-items: center;
+	position: relative;
+	justify-content: start;
+	border-bottom: 1px solid #ddd;
+	margin: 0 40px;
+	padding-bottom: 0;
+
+	@media screen and (min-width: 768px) {
+		justify-content: space-between;
+	}
+}
+
+.subheading {
+	margin-right: 20px;
+	cursor: pointer;
+	position: relative;
+	font-weight: 500;
+	border-bottom: 2px solid var(--wp-admin-theme-color, #ab3a6c);
+	padding: 8px 0;
+}
+
+.ab-testing-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 2rem;
+	font-family: Inter, sans-serif;
+	font-size: 14px;
+	color: #333;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+	border-radius: 12px;
+
+	th, td {
+		border: 1px solid #e0e0e0;
+		padding: 16px;
+		text-align: center;
+	}
+
+	th {
+		background-color: #f5f5f5;
+		font-weight: 600;
+		color: #555;
+	}
+
+	tr:nth-child(even) {
+		background-color: #fafafa;
+	}
+
+	tr td:nth-child(2) {
+		color: #000;
+		background-color: #F9F8F2;
+		font-weight: 600;
+	}
+
+	tr.left-greater td:first-child {
+		background-color: #E5F6EA;
+		color: #166534;
+		font-weight: 600;
+	}
+
+	tr.right-greater td:last-child {
+		background-color: #E5F6EA;
+		color: #166534;
+		font-weight: 600;
+	}
+
+}
+
+.legend {
+	// flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+
+	.legend-item {
+		background-color: #F2F2F7;
+		padding: 4px 8px;
+		border-radius: 4px;
+		display: flex;
+		align-items: center;
+		width: fit-content;
+	}
+
+	.pie-chart-legend {
+		text-decoration: none;
+		color: inherit;
+		cursor: pointer;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+}
+
+.performance-status-container {
+	border-radius: 12px 12px 0 0;
+}
+
+.posts-count-container {
+      background-color: #fff;
+      border-radius: 8px;
+      padding: 16px;
+	  height: 400px;
+	  overflow: scroll;
+
+    h2 {
+      color: #1C1C1E;
+	  font-weight: 700;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      margin-right: 5px;
+      border-radius: 2px;
+    }
+
+    .total-views {
+      font-size: 14px;
+      margin-top: 10px;
+      text-align: center;
+      color: #555;
+    }
+
+    .donut-label {
+      font-size: 14px;
+      text-anchor: middle;
+      fill: #333;
+    }
+
+    .donut-percent {
+      font-size: 12px;
+      text-anchor: middle;
+      fill: #666;
+    }
+
+	.center-text-title {
+		fill: #8E8E93;
+		font-size: 14px;
+		text-anchor: middle;
+	}
+
+	.center-text-views {
+		font-size: 24px;
+		font-weight: 600;
+		text-anchor: middle;
+	}
+}
+
+@media (max-width: 1024px) {
+
+		#root-video-analytics, #root-video-dashboard {
+
+			.video-analytics-container {
+				padding: 40px;
+			}
+
+			.analytics-info-container {
+
+				.analytics-info {
+					min-width: 200px;
+					gap: 20px;
+
+					.analytics-single-info {
+						width: 100%;
+						align-items: center;
+						gap: 7px;
+					}
+
+					.analytics-info-heading {
+						width: 100%;
+						justify-content: space-between;
+					}
+				}
+			}
+
+		.metrics-container {
+			grid-template-columns: 1fr;
+		}
+	}
+}
+
+// GoDAM 2.0 (analytics surface): Playback Performance header controls —
+// dot-style legend + date-range dropdown.
+.godam-chart-controls {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+.godam-chart-legend {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+
+	&__item {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		cursor: pointer;
+		font-size: 13px;
+		color: #1e1e1e;
+		white-space: nowrap;
+	}
+
+	&__label--off {
+		color: #a1a1aa;
+	}
+}
+
+.godam-legend-dot {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 9999px;
+	flex-shrink: 0;
+}
+
+.godam-period-dropdown__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+// Primary CTAs in the shared GoDAM header (Manage Media / Upgrade plan) use a
+// plugin-wide brand gradient. Scope an admin-scheme override to the analytics
+// surfaces only, so the rest of GoDAM keeps the brand gradient for now.
+.toplevel_page_rtgodam,
+.godam_page_rtgodam_analytics {
+
+	.godam-button.is-primary:not(:disabled) {
+		background: var(--wp-admin-theme-color) !important;
+	}
+}
+
+// =====================================================================
+// GoDAM 2.0 shared card primitives (P0, FE-only).
+// Defined here (not dashboard/index.scss) so the per-video Analytics page
+// — which only bundles this stylesheet — can use them. The dashboard bundle
+// imports this file too, so both surfaces share one definition.
+// =====================================================================
+.godam-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 20px;
+
+	&__head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 16px;
+
+		h2 {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 600;
+			color: #1e1e1e;
+		}
+	}
+}
+
+.godam-pill {
+	font-size: 12px;
+	font-weight: 500;
+	color: #50575e;
+	border: 1px solid #e5e7eb;
+	border-radius: 6px;
+	padding: 4px 10px;
+	white-space: nowrap;
+}
+
+// Insights card: the KPI cards keep their existing responsive flex layout
+// (4-across at desktop, wrapping below). Just let them shrink within the card.
+.godam-insights-card {
+
+	.single-metrics-info-container > * {
+		min-width: 0;
+	}
+}
+
+// =====================================================================
+// GoDAM 2.0 per-video analytics page reskin (P0, FE-only).
+// Stacks the existing content into the shared card aesthetic.
+// =====================================================================
+#root-video-analytics {
+
+	// Stack the "All Time Insights" card + the video card vertically inside the
+	// reveal/blur wrapper (#video-analytics-container) instead of the old 2-col row.
+	.video-analytics-container {
+		display: block;
+
+		.godam-analytics-stack {
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
+			width: 100%;
+		}
+	}
+
+	// The video + heatmap overlay sit inside a card; keep the player centred.
+	.godam-video-card {
+
+		.video-container {
+			margin: 0 auto;
+		}
+	}
+
+	// Video hero (thumbnail + title + layer count) — visual reference for the
+	// video now that the inline player was replaced by the retention curve.
+	.godam-video-hero {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+
+		&__thumb {
+			width: 72px;
+			height: 72px;
+			flex-shrink: 0;
+			object-fit: cover;
+			background: #e5e7eb;
+			border-radius: 10px;
+		}
+
+		&__meta {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			min-width: 0;
+		}
+
+		&__title {
+			margin: 0;
+			font-size: 24px;
+			font-weight: 700;
+			line-height: 1.2;
+			color: #1e1e1e;
+			overflow-wrap: anywhere;
+		}
+
+		&__badge {
+			align-self: flex-start;
+			padding: 4px 12px;
+			font-size: 13px;
+			color: #52525b;
+			background: #fff;
+			border: 1px solid #e5e7eb;
+			border-radius: 8px;
+		}
+	}
+
+	// Viewer Retention Curve — standalone area+line chart that replaced the
+	// "Views across the video" overlay. Neutral greys for the curve; the WP
+	// admin accent only for the hover focus dot.
+	.godam-retention-card {
+
+		// Lay the date picker out to the right of the title. #2028 adds a global
+		// .godam-card__head style; this scoped rule keeps the head tidy on its own.
+		.godam-card__head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			flex-wrap: wrap;
+			gap: 12px;
+		}
+
+		.godam-retention {
+			position: relative;
+			width: 100%;
+			padding: 8px 4px 0;
+		}
+
+		#retention-curve {
+			display: block;
+			width: 100%;
+			height: 320px;
+			overflow: visible;
+		}
+
+		.godam-retention__area {
+			fill: #e5e7eb;
+			opacity: 0.55;
+		}
+
+		.godam-retention__line {
+			fill: none;
+			stroke: #6b7280;
+			stroke-width: 2px;
+		}
+
+		.godam-retention__grid .tick line {
+			stroke: #eef0f2;
+		}
+
+		.godam-retention__grid .tick text {
+			display: none;
+		}
+
+		.godam-retention__axis .tick text {
+			fill: #71717a;
+			font-size: 11px;
+		}
+
+		.godam-retention__axis .tick line {
+			stroke: transparent;
+		}
+
+		.godam-retention__focus {
+			r: 4;
+			fill: var(--wp-admin-theme-color, #3858e9);
+			stroke: #fff;
+			stroke-width: 2px;
+		}
+
+		.godam-retention__hover-line {
+			stroke: #9ca3af;
+			stroke-width: 1px;
+			stroke-dasharray: 4 2;
+		}
+
+		.retention-curve-tooltip {
+			position: absolute;
+			top: 0;
+			z-index: 2;
+			transform: translateX(-50%);
+			padding: 6px 10px;
+			background: #fff;
+			border: 1px solid #e5e7eb;
+			border-radius: 6px;
+			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+			font-size: 12px;
+			white-space: nowrap;
+			pointer-events: none;
+			opacity: 0;
+
+			.godam-retention__tt {
+				display: flex;
+				flex-direction: column;
+				gap: 2px;
+			}
+
+			.godam-retention__tt-value {
+				display: flex;
+				gap: 6px;
+				align-items: center;
+				font-weight: 600;
+				color: #18181b;
+			}
+
+			.godam-retention__tt-time {
+				color: #71717a;
+			}
+		}
+
+		// Only present to keep charts.js's per-video render triggering.
+		.godam-retention__trigger {
+			display: none;
+		}
+
+		.godam-retention__empty {
+			padding: 32px 8px;
+			color: #71717a;
+			font-size: 13px;
+			text-align: center;
+		}
+	}
+
+	// Three-up metrics row (playback / country / sources) — make every card use
+	// the shared .godam-card look so the row is visually uniform.
+	.metrics-container {
+
+		.country-heatmap-container,
+		.posts-count-container {
+			height: 400px;
+			overflow: auto;
+		}
+
+		// Drop the bespoke heading weight in favour of the .godam-card__head style.
+		.posts-count-container h2 {
+			color: #1e1e1e;
+			font-size: 16px;
+			font-weight: 600;
+		}
+	}
+}
+
+// .godam-analytics-unavailable moved to pages/shared/analytics-unavailable.scss (shared via AnalyticsUnavailableNotice).

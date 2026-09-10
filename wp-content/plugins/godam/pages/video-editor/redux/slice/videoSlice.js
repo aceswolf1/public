@@ -1,0 +1,255 @@
+/* global godamSettings */
+
+/**
+ * External dependencies
+ */
+import { createSlice } from '@reduxjs/toolkit';
+
+const initialState = {
+	videoConfig: {
+		controls: true,
+		fluid: true,
+		preload: 'auto',
+		width: '100%',
+		sources: [],
+		playbackRates: [ 0.5, 1, 1.5, 2 ],
+		captions: [],
+		adServer: 'self-hosted',
+		controlBar: {
+			playToggle: true, // Play/Pause button
+			volumePanel: true,
+			currentTimeDisplay: true, // Current time
+			timeDivider: true, // Divider between current time and duration
+			durationDisplay: true, // Total duration
+			fullscreenToggle: true, // Full-screen button
+			subsCapsButton: true,
+			pictureInPictureToggle: false,
+			//custom controls
+			brandingIcon: true,
+			appearanceColor: godamSettings?.brandColor ? godamSettings?.brandColor : '#2b333fb3',
+			hoverColor: '#fff',
+			zoomLevel: 0,
+			playButtonPosition: 'center',
+			controlBarPosition: 'horizontal',
+			customBrandImg: '',
+			customPlayBtnImg: '',
+		},
+	},
+	layers: [],
+	chapters: [],
+	isChanged: false,
+	currentLayer: null,
+	currentTab: 'layers',
+	// Media-type awareness. Seeded from the attachment MIME via `setMediaType`;
+	// `allowedTabs` gates `setCurrentTab` and `allowedLayerTypes` gates the
+	// "Add layer" menu. Defaults reproduce the historic video-only behaviour.
+	mediaType: 'video',
+	allowedTabs: [ 'layers', 'player-settings', 'transcription', 'chapters' ],
+	allowedLayerTypes: '*',
+	loading: false,
+	gforms: [],
+	jetpackForms: [],
+	sureforms: [],
+	forminatorForms: [],
+	metforms: [],
+	cf7Forms: [],
+	fluentForms: [],
+	wpforms: [],
+	everestForms: [],
+	ninjaForms: [],
+	gformPluginActive: true,
+	jetpackPluginActive: false,
+	sureformsPlugnActive: false,
+	forminatorPluginActive: false,
+	metformPlugnActive: false,
+	cf7PluginActive: false,
+	wpFormPluginActive: false,
+	fluentPluginActive: false,
+	everestPluginActive: false,
+	ninjaPluginActive: false,
+	addLayerModalTime: null,
+};
+
+const slice = createSlice( {
+	name: 'video',
+	initialState,
+	reducers: {
+		resetVideoState: () => {
+			return initialState;
+		},
+		initializeStore: ( state, action ) => {
+			const { videoConfig, layers, chapters } = action.payload;
+			// Audio (and other non-video) meta may omit `videoConfig` entirely;
+			// guard the nested merge so it doesn't throw on `.controlBar`.
+			state.videoConfig = {
+				...state.videoConfig,
+				...( videoConfig || {} ),
+				controlBar: {
+					...state.videoConfig.controlBar,
+					...( videoConfig?.controlBar || {} ), // Nested merge for controlBar
+				},
+			};
+			state.layers = layers || [];
+			state.isChanged = false;
+			state.chapters = chapters || [];
+		},
+		saveVideoMeta: ( state ) => {
+			state.isChanged = false;
+		},
+		addLayer: ( state, action ) => {
+			const newLayer = action.payload;
+			state.layers.push( newLayer );
+			state.currentLayer = newLayer;
+			state.isChanged = true;
+		},
+		removeLayer: ( state, action ) => {
+			const layerId = action.payload.id;
+			state.layers = state.layers.filter( ( layer ) => layer.id !== layerId );
+			state.isChanged = true;
+		},
+		updateLayerField: ( state, action ) => {
+			const { id, field, value } = action.payload;
+			const ind = state.layers.findIndex( ( l ) => l.id === id );
+			state.layers[ ind ][ field ] = value;
+			state.isChanged = true;
+		},
+		addChapter: ( state, action ) => {
+			const newChapter = action.payload;
+			state.chapters.push( newChapter );
+			state.currentChapter = newChapter;
+			state.isChanged = true;
+		},
+		removeChapter: ( state, action ) => {
+			const chapterID = action.payload.id;
+			state.chapters = state.chapters.filter( ( layer ) => layer.id !== chapterID );
+			state.isChanged = true;
+		},
+		updateChapterField: ( state, action ) => {
+			const { id, field, value } = action.payload;
+			const ind = state.chapters.findIndex( ( l ) => l.id === id );
+			state.chapters[ ind ][ field ] = value;
+			state.isChanged = true;
+		},
+		updateVideoConfig: ( state, action ) => {
+			state.videoConfig = { ...state.videoConfig, ...action.payload };
+			state.isChanged = true;
+		},
+		setCurrentLayer: ( state, action ) => {
+			state.currentLayer = action.payload;
+		},
+		setCurrentTab: ( state, action ) => {
+			// Only accept tabs the current media type allows.
+			if ( state.allowedTabs.includes( action.payload ) ) {
+				state.currentTab = action.payload;
+			}
+		},
+		// Apply a media-type capability to the store: records the media type,
+		// the allowed tabs / layer types, and snaps `currentTab` to a supported
+		// tab if the current one isn't available for this media type.
+		setMediaType: ( state, action ) => {
+			const { mediaType, tabs, defaultTab, allowedLayerTypes } = action.payload;
+			state.mediaType = mediaType;
+			state.allowedTabs = tabs;
+			state.allowedLayerTypes = allowedLayerTypes;
+			if ( ! tabs.includes( state.currentTab ) ) {
+				state.currentTab = defaultTab;
+			}
+		},
+		setLoading: ( state, action ) => {
+			state.loading = action.payload;
+		},
+		setGravityForms: ( state, action ) => {
+			state.gforms = action.payload;
+		},
+		setGravityFormsPluginActive: ( state, action ) => {
+			state.gformPluginActive = action.payload;
+		},
+		setCF7Forms: ( state, action ) => {
+			state.cf7Forms = action.payload;
+		},
+		SetCF7PluginActive: ( state, action ) => {
+			state.cf7PluginActive = action.payload;
+		},
+		setWPForms: ( state, action ) => {
+			state.wpforms = action.payload;
+		},
+		setEverestForms: ( state, action ) => {
+			state.everestForms = action.payload;
+		},
+		setWPFormPluginActive: ( state, action ) => {
+			state.wpFormPluginActive = action.payload;
+		},
+		setJetpackForms: ( state, action ) => {
+			state.jetpackForms = action.payload;
+		},
+		setFluentForms: ( state, action ) => {
+			state.fluentForms = action.payload;
+		},
+		setJetpackPluginActive: ( state, action ) => {
+			state.jetpackPluginActive = action.payload;
+		},
+		setSureforms: ( state, action ) => {
+			state.sureforms = action.payload;
+		},
+		setSureformsPluginActive: ( state, action ) => {
+			state.sureformsPlugnActive = action.payload;
+		},
+		setForminatorForms: ( state, action ) => {
+			state.forminatorForms = action.payload;
+		},
+		setForminatorPluginActive: ( state, action ) => {
+			state.forminatorPluginActive = action.payload;
+		},
+		setNinjaForms: ( state, action ) => {
+			state.ninjaForms = action.payload;
+		},
+		setNinjaPluginActive: ( state, action ) => {
+			state.ninjaPluginActive = action.payload;
+		},
+		setMetforms: ( state, action ) => {
+			state.metforms = action.payload;
+		},
+		setMetformPluginActive: ( state, action ) => {
+			state.metformPlugnActive = action.payload;
+		},
+		setAddLayerModalTime: ( state, action ) => {
+			state.addLayerModalTime = action.payload;
+		},
+	},
+} );
+
+export const {
+	resetVideoState,
+	initializeStore, saveVideoMeta,
+	addLayer,
+	removeLayer,
+	updateLayerField,
+	addChapter,
+	removeChapter,
+	updateChapterField,
+	updateVideoConfig,
+	setCurrentLayer,
+	setCurrentTab,
+	setMediaType,
+	setLoading,
+	setGravityForms,
+	setGravityFormsPluginActive,
+	setCF7Forms,
+	SetCF7PluginActive,
+	setWPForms,
+	setEverestForms,
+	setWPFormPluginActive,
+	setJetpackForms,
+	setFluentForms,
+	setJetpackPluginActive,
+	setSureforms,
+	setSureformsPluginActive,
+	setForminatorForms,
+	setForminatorPluginActive,
+	setNinjaForms,
+	setNinjaPluginActive,
+	setMetforms,
+	setMetformPluginActive,
+	setAddLayerModalTime,
+} = slice.actions;
+export default slice.reducer;

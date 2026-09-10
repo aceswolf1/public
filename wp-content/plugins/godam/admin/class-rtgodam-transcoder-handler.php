@@ -1,0 +1,995 @@
+<?php
+/**
+ * The transcoder-specific functionality of the plugin.
+ *
+ * @since   1.0.0
+ *
+ * @package GoDAM
+ * @subpackage GoDAM/TranscoderHandler
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Handle request/response with trancoder api.
+ *
+ * @since   1.0.0
+ *
+ * @package GoDAM
+ * @subpackage GoDAM/TranscoderHandler
+ */
+class RTGODAM_Transcoder_Handler {
+
+	/**
+	 * The transcoder API URL.
+	 *
+	 * @since    1.0.0
+	 * @access   protected
+	 * @var      string    $transcoding_api_url    The URL of the api.
+	 */
+	public $transcoding_api_url = RTGODAM_API_BASE . '/api/';
+
+	/**
+	 * The URL of the EDD store.
+	 *
+	 * @since    1.0.0
+	 * @access   protected
+	 * @var      string    $store_url    The URL of the transcoder api.
+	 */
+	protected $store_url = RTGODAM_API_BASE . '/api/';
+
+	/**
+	 * Contain uploaded media information.
+	 *
+	 * @since    1.0.0
+	 * @access   public
+	 * @var      array    $uploaded   Contain uploaded media information.
+	 */
+	public $uploaded = array();
+
+	/**
+	 * The author of the rtMedia item being processed.
+	 *
+	 * @since    1.0.0
+	 * @access   public
+	 * @var      int|null    $media_author    rtMedia media author ID.
+	 */
+	public $media_author = null;
+
+	/**
+	 * The api key of transcoding service subscription.
+	 *
+	 * @since    1.0.0
+	 * @access   public
+	 * @var      string    $api_key    The api key of transcoding service subscription.
+	 */
+	public $api_key = false;
+
+	/**
+	 * Video extensions with comma separated.
+	 *
+	 * @since    1.0.0
+	 * @access   public
+	 * @var      string    $video_extensions    Video extensions with comma separated.
+	 */
+	public $video_extensions = ',mov,m4v,m2v,avi,mpg,flv,wmv,mkv,webm,ogv,mxf,asf,vob,mts,qt,mpeg,x-msvideo,3gp,mpd';
+
+	/**
+	 * Audio extensions with comma separated.
+	 *
+	 * @since    1.0.0
+	 * @access   public
+	 * @var      string    $audio_extensions    Audio extensions with comma separated.
+	 */
+	public $audio_extensions = ',wma,ogg,wav,m4a';
+
+	/**
+	 * Other extensions with comma separated.
+	 *
+	 * @since    1.5
+	 * @access   public
+	 * @var      string    $other_extensions    Other extensions with comma separated.
+	 */
+	public $other_extensions = ',pdf';
+
+	/**
+	 * Document extensions with comma separated.
+	 *
+	 * Office / OpenDocument / plain-text formats, which GoDAM Central converts to a preview
+	 * PDF. They are kept apart from $other_extensions because those map the extension
+	 * straight onto the job type ('pdf' => job_type 'pdf'), whereas every format here shares
+	 * the single job type 'document'.
+	 *
+	 * No leading comma, unlike $audio_extensions and $other_extensions: exploding those yields
+	 * an empty first entry, which then matches a file with no extension at all.
+	 *
+	 * @since    n.e.x.t
+	 * @access   public
+	 * @var      string    $document_extensions    Document extensions with comma separated.
+	 */
+	public $document_extensions = 'docx,doc,xlsx,xls,pptx,ppt,odt,ods,odp,txt,csv';
+
+	/**
+	 * Allowed mimetypes.
+	 *
+	 * @since    1.5
+	 * @access   public
+	 * @var      array    $allowed_mimetypes    Allowed mimetypes other than audio and video.
+	 */
+	public $allowed_mimetypes = array(
+		'application/ogg',
+	);
+
+	/**
+	 * Store EasyDAM settings.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @var array $easydam_settings Contains user-specified settings for EasyDAM.
+	 */
+	public $easydam_settings = array();
+
+	/**
+	 * Initialize the class and set its properties.
+	 *
+	 * @since    1.0.0
+	 *
+	 * @param bool $no_init  If true then do nothing else continue.
+	 */
+	public function __construct( $no_init = false ) {
+
+		$this->api_key          = get_option( 'rtgodam-api-key' );
+		$this->easydam_settings = get_option( 'rtgodam-settings', array() );
+
+		/*
+		 * Document MIME types come from the shared helper rather than being duplicated in
+		 * the property default, so the transcoder and the Document block can never disagree
+		 * about which formats are supported. Anything not listed here is dropped by the
+		 * mime gate in wp_media_transcoding() and never reaches GoDAM Central.
+		 */
+		$this->allowed_mimetypes = array_values(
+			array_unique(
+				array_merge(
+					$this->allowed_mimetypes,
+					array_keys( rtgodam_get_supported_document_types() )
+				)
+			)
+		);
+
+		$default_settings = array(
+			'video' => array(
+				'adaptive_bitrate' => false,
+				'watermark'        => false,
+				'watermark_text'   => '',
+				'watermark_url'    => '',
+				'video_thumbnails' => 5,
+			),
+		);
+
+		$this->easydam_settings = wp_parse_args(
+			get_option( 'rtgodam-settings', array() ),
+			$default_settings
+		);
+
+		// Temporarily inclduing godam-retranscode-admin.php file here.
+		include_once RTGODAM_PATH . 'admin/class-rtgodam-retranscodemedia.php'; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingCustomConstant
+
+		/**
+		 * Allow other plugin and wp-config to overwrite API URL.
+		 */
+		if ( defined( 'RTGODAM_TRANSCODER_API_URL' ) && ! empty( RTGODAM_TRANSCODER_API_URL ) ) {
+			$this->transcoding_api_url = RTGODAM_TRANSCODER_API_URL;
+		}
+
+		$this->transcoding_api_url = apply_filters( 'rtgodam_transcoding_api_url', $this->transcoding_api_url );
+
+		if ( $no_init ) {
+			return;
+		}
+
+		if ( $this->api_key ) {
+			$usage_info = get_option( 'rtgodam-usage' );
+
+			if ( isset( $usage_info ) && is_array( $usage_info ) && array_key_exists( $this->api_key, $usage_info ) ) {
+				if ( is_object( $usage_info[ $this->api_key ] ) && isset( $usage_info[ $this->api_key ]->status ) && 'Active' === $usage_info[ $this->api_key ]->status ) {
+
+					// Enable re-transcoding.
+					include_once RTGODAM_PATH . 'admin/class-rtgodam-retranscodemedia.php'; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingCustomConstant
+
+					add_action( 'add_attachment', array( $this, 'send_transcoding_request' ), 21, 1 );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Send transcoding request for uploaded media in WordPress media library.
+	 *
+	 * @since 1.4.2
+	 *
+	 * @param int $attachment_id    ID of attachment.
+	 */
+	public function send_transcoding_request( $attachment_id ) {
+		/**
+		 * Fires before reading this attachment's metadata and dispatching
+		 * its transcoding request, so integrations that centralize media on
+		 * another site can switch context first. Hooked to `add_attachment`,
+		 * which can fire synchronously from inside an already-open bracket
+		 * (e.g. create_virtual_attachment()) — this method's own attachment
+		 * reads, and wp_media_transcoding()'s internal ones, both need it.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			$metadata = wp_get_attachment_metadata( $attachment_id );
+
+			$mime_type = get_post_mime_type( $attachment_id );
+
+			if ( empty( $metadata ) ) {
+				$metadata = array( 'mime_type' => $mime_type );
+			} elseif ( empty( $metadata['mime_type'] ) ) {
+				$metadata['mime_type'] = $mime_type;
+			}
+
+			// Send the transcoding request.
+			$this->wp_media_transcoding( $metadata, $attachment_id );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Send transcoding request and save transcoding job id get in response for uploaded media in WordPress media library.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array  $wp_metadata          Metadata of the attachment.
+	 * @param int    $attachment_id     ID of attachment.
+	 * @param string $autoformat        If true then generating thumbs only else trancode video.
+	 * @param bool   $manual_retranscode       If its retranscoding request or not.
+	 */
+	public function wp_media_transcoding( $wp_metadata, $attachment_id, $autoformat = true, $manual_retranscode = false ) {
+		// Check if local development environment.
+		if ( rtgodam_is_local_environment() ) {
+			return;
+		}
+
+		/**
+		 * Filter to allow external developers to disable automatic transcoding on upload.
+		 * This allows users to have manual control over when videos get transcoded.
+		 *
+		 * Note: This filter only applies to automatic uploads. Manual retranscoding requests
+		 * (via bulk actions, tools page, etc.) will always proceed regardless of this setting.
+		 * Form integrations will also use this filter to disable transcoding for form uploads.
+		 *
+		 * Example usage:
+		 * add_filter( 'godam_auto_transcode_on_upload', '__return_false' ); // Disable globally
+		 *
+		 * @since 1.5.0
+		 *
+		 * @param bool $auto_transcode_on_upload Whether to automatically transcode on upload. Default true.
+		 */
+		if ( ! $manual_retranscode ) {
+			$auto_transcode_on_upload = apply_filters( 'godam_auto_transcode_on_upload', true );
+
+			if ( ! $auto_transcode_on_upload ) {
+				return $wp_metadata;
+			}
+		}
+
+		// Skip transcoding and re-transcoding for images.
+		if ( preg_match( '/image/i', $wp_metadata['mime_type'], $type_array ) ) {
+			return $wp_metadata;
+		}
+
+		if ( empty( $wp_metadata['mime_type'] ) ) {
+			return $wp_metadata;
+		}
+
+		$transcoding_job_id = get_post_meta( $attachment_id, 'rtgodam_transcoding_job_id', true );
+
+		// Log virtual media status for transcoding requests.
+		$godam_original_id = get_post_meta( $attachment_id, '_godam_original_id', true );
+		$is_virtual_media  = ! empty( $godam_original_id );
+
+		// Skip transcoding for virtual media.
+		if ( $is_virtual_media ) {
+			return $wp_metadata;
+		}
+
+		/** Block if bandwidth or storage limits are exceeded */
+		$user_data = rtgodam_get_user_data();
+		if ( ! empty( $user_data ) && isset( $user_data['bandwidth_used'], $user_data['total_bandwidth'], $user_data['storage_used'], $user_data['total_storage'] ) ) {
+			$storage_exceeded = $user_data['storage_used'] > $user_data['total_storage'];
+
+			// Only block transcoding when storage is exceeded (bandwidth exceeded still allows transcoding).
+			if ( $storage_exceeded ) {
+				$reason_parts   = array();
+				$reason_parts[] = sprintf(
+					/* translators: %s: storage usage percent */
+					__( 'Storage exceeded (%s%%).', 'godam' ),
+					number_format( ( $user_data['storage_used'] / max( 1, $user_data['total_storage'] ) ) * 100, 1 )
+				);
+
+				$reason = implode( ' ', $reason_parts ) . ' ' . __( 'Please upgrade your plan to continue transcoding.', 'godam' );
+
+				// Persist status on the attachment so UI can show it.
+				update_post_meta( $attachment_id, 'rtgodam_transcoding_status', 'blocked' );
+				update_post_meta( $attachment_id, 'rtgodam_transcoding_error_msg', $reason );
+
+				return $wp_metadata; // Stop before calling the transcoder API.
+			}
+		}
+
+		// Check if HTTP auth is enabled.
+		if ( rtgodam_has_http_auth() ) {
+			if ( $manual_retranscode ) {
+				// Store in failed transcoding list for retry later.
+				$failed_transcoding_attachments                   = get_option( 'rtgodam-failed-transcoding-attachments', array() );
+				$failed_transcoding_attachments[ $attachment_id ] = array(
+					'wp_metadata'   => $wp_metadata,
+					'attachment_id' => $attachment_id,
+					'autoformat'    => $autoformat,
+				);
+				update_option( 'rtgodam-failed-transcoding-attachments', $failed_transcoding_attachments );
+			}
+
+			// Update status to failed.
+			update_post_meta( $attachment_id, 'rtgodam_transcoding_status', 'failed' );
+			update_post_meta( $attachment_id, 'rtgodam_transcoding_error_msg', __( 'HTTP authentication is enabled on your site, preventing transcoding.', 'godam' ) );
+			update_post_meta( $attachment_id, 'rtgodam_transcoding_error_code', 'http_auth_enabled' );
+
+			return $wp_metadata;
+		}
+
+		$path = get_attached_file( $attachment_id );
+		$url  = wp_get_attachment_url( $attachment_id );
+
+		/**
+		 * FIX WordPress 3.6 METADATA
+		 */
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+
+		$metadata = $wp_metadata;
+
+		$type_arry = explode( '.', $url );
+		$type      = strtolower( $type_arry[ count( $type_arry ) - 1 ] );
+		// Lowercased because the extension lists below are all lowercase: an upload named
+		// REPORT.PDF would otherwise miss its branch and be sent as a video stream job.
+		$extension        = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
+		$not_allowed_type = array();
+
+		/*
+		 * A document MIME type is not sufficient on its own, because several of them are
+		 * shared with formats that have no conversion path. WordPress maps .srt, .asc, .c,
+		 * .cc and .h to text/plain exactly as it maps .txt, so without this a subtitle file
+		 * would satisfy the MIME gate below, find no matching extension in any of the job
+		 * type branches, and fall through to the default 'stream' — dispatching every
+		 * caption upload to GoDAM Central as a video transcode that can only fail.
+		 *
+		 * Checked here rather than inside the gate so audio/video and application/ogg keep
+		 * matching on MIME alone, exactly as they did before documents were supported.
+		 */
+		if (
+			array_key_exists( $metadata['mime_type'], rtgodam_get_supported_document_types() )
+			&& ! in_array( $extension, rtgodam_get_supported_document_extensions(), true )
+		) {
+			return $wp_metadata;
+		}
+
+		if ( (
+				preg_match( '/video|audio/i', $metadata['mime_type'], $type_array ) ||
+				in_array( $metadata['mime_type'], $this->allowed_mimetypes, true )
+			) &&
+			! in_array( $type, $not_allowed_type, true )
+		) {
+
+			$options_video_thumb = $this->get_thumbnails_required( $attachment_id );
+
+			if ( empty( $options_video_thumb ) ) {
+				$options_video_thumb = 5;
+			}
+
+			$job_type = 'stream';
+
+			if ( ( ! empty( $type_array ) && 'audio' === $type_array[0] ) || in_array( $extension, explode( ',', $this->audio_extensions ), true ) ) {
+				$job_type = 'audio';
+			} elseif ( in_array( $extension, explode( ',', $this->other_extensions ), true ) ) {
+				$job_type            = $extension;
+				$autoformat          = $extension;
+				$options_video_thumb = 0;
+			} elseif ( '' !== $extension && in_array( $extension, explode( ',', $this->document_extensions ), true ) ) {
+				/*
+				 * Office / OpenDocument / text files all share one job type. GoDAM Central
+				 * converts them to a preview PDF (job_type 'document' routes to its document
+				 * queue), and returns that PDF separately as `preview_pdf_url` — `download_url`
+				 * stays the original file. `formats` names the conversion target rather than
+				 * the source extension, unlike the 'pdf' branch above where the two coincide.
+				 *
+				 * Thumbnails are rasterised from page 0 of the preview by Central itself, so
+				 * no thumbnail count is requested here.
+				 */
+				$job_type            = 'document';
+				$autoformat          = 'pdf';
+				$options_video_thumb = 0;
+			}
+
+			/** Figure out who is requesting this job */
+			$job_for = 'wp-media';
+
+			// Media settings.
+			$rtgodam_watermark              = $this->easydam_settings['video']['watermark'];
+			$rtgodam_use_watermark_image    = $this->easydam_settings['video']['use_watermark_image'] ?? false;
+			$rtgodam_watermark_text         = sanitize_text_field( $this->easydam_settings['video']['watermark_text'] );
+			$rtgodam_watermark_url          = esc_url( $this->easydam_settings['video']['watermark_url'] );
+			$rtgodam_video_compress_quality = $this->easydam_settings['video']['video_compress_quality'] ?? 80;
+
+			$watermark_to_use = array();
+
+			// Include watermark settings only if watermark is enabled.
+			if ( $rtgodam_watermark ) {
+				if ( $rtgodam_use_watermark_image && ! empty( $rtgodam_watermark_url ) ) {
+					$watermark_to_use['watermark_url'] = $rtgodam_watermark_url;
+				} elseif ( ! $rtgodam_use_watermark_image && ! empty( $rtgodam_watermark_text ) ) {
+					$watermark_to_use['watermark_text'] = $rtgodam_watermark_text;
+				}
+			}
+
+			include_once RTGODAM_PATH . 'admin/class-rtgodam-transcoder-rest-routes.php';
+			$callback_url        = RTGODAM_Transcoder_Rest_Routes::get_callback_url();
+			$status_callback_url = RTGODAM_Transcoder_Rest_Routes::get_callback_url( 'status' );
+
+			// Get attachment author information.
+			$attachment_author_id = get_post_field( 'post_author', $attachment_id ); // godam-coverage-ignore -- wp_media_transcoding(): covered transitively — every real call site (send_transcoding_request() here, Retranscode_Failed_Media::retranscode_failed_media(), and class-transcoding.php's retranscode_media() via retranscode_media_centralized()) already wraps the call in its own before/after pair.
+			$attachment_author    = get_user_by( 'id', $attachment_author_id );
+			$site_url             = get_site_url();
+
+			// Get author name with fallback to username.
+			$author_first_name = '';
+			$author_last_name  = '';
+			$author_email      = '';
+
+			if ( $attachment_author ) {
+				$author_first_name = $attachment_author->first_name ?? '';
+				$author_last_name  = $attachment_author->last_name ?? '';
+				$author_email      = $attachment_author->user_email ?? '';
+
+				// If first and last names are empty, use username as fallback.
+				if ( empty( $author_first_name ) && empty( $author_last_name ) ) {
+					$author_first_name = $attachment_author->user_login ?? '';
+				}
+			}
+
+			$args = array(
+				'method'    => empty( $transcoding_job_id ) ? 'POST' : 'PUT',
+				'sslverify' => false,
+				'timeout'   => 60, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout
+				'body'      => array_merge(
+					array(
+						'retranscode'          => empty( $transcoding_job_id ) ? 0 : 1,
+						'api_token'            => $this->api_key,
+						'job_type'             => $job_type,
+						'job_for'              => $job_for,
+						'file_origin'          => rawurlencode( $url ),
+						'callback_url'         => rawurlencode( $callback_url ),
+						'status_callback'      => rawurlencode( $status_callback_url ),
+						'force'                => 0,
+						'formats'              => ( true === $autoformat ) ? ( ( ( isset( $type_array[0] ) ) && 'video' === $type_array[0] ) ? 'mp4' : 'mp3' ) : $autoformat,
+						'thumbnail_count'      => $options_video_thumb,
+						'stream'               => true,
+						'watermark'            => boolval( $rtgodam_watermark ),
+						'resolutions'          => array( 'auto' ),
+						'video_quality'        => $rtgodam_video_compress_quality,
+						'mime_type'            => $metadata['mime_type'],
+						'title'                => sanitize_text_field( get_the_title( $attachment_id ) ),
+						'description'          => sanitize_textarea_field( (string) get_post_field( 'post_content', $attachment_id ) ), // godam-coverage-ignore -- wp_media_transcoding(): covered transitively — every real call site (send_transcoding_request() here, Retranscode_Failed_Media::retranscode_failed_media(), and class-transcoding.php's retranscode_media() via retranscode_media_centralized()) already wraps the call in its own before/after pair.
+						'wp_author_email'      => apply_filters( 'godam_author_email_to_send', $author_email, $attachment_id ),
+						'wp_site'              => $site_url,
+						'wp_author_first_name' => apply_filters( 'godam_author_first_name_to_send', $author_first_name, $attachment_id ),
+						'wp_author_last_name'  => apply_filters( 'godam_author_last_name_to_send', $author_last_name, $attachment_id ),
+						'public'               => 1,
+					),
+					$watermark_to_use
+				),
+			);
+
+			$transcoding_url = $this->transcoding_api_url . 'resource/Transcoder Job' . ( empty( $transcoding_job_id ) ? '' : '/' . $transcoding_job_id );
+
+			$upload_page = wp_remote_request( $transcoding_url, $args );
+
+			if ( ! is_wp_error( $upload_page ) &&
+				(
+					isset( $upload_page['response']['code'] ) &&
+					200 === intval( $upload_page['response']['code'] )
+				)
+			) {
+				$upload_info = json_decode( $upload_page['body'] );
+
+				if ( isset( $upload_info->data ) && isset( $upload_info->data->name ) ) {
+					$job_id = $upload_info->data->name;
+					update_post_meta( $attachment_id, 'rtgodam_transcoding_job_id', $job_id );
+
+					// Job successfully submitted to Central — reset any prior failure state so the
+					// media library shows the item as in-queue rather than failed.
+					update_post_meta( $attachment_id, 'rtgodam_transcoding_status', 'Queued' );
+					delete_post_meta( $attachment_id, 'rtgodam_transcoding_error_msg' );
+					delete_post_meta( $attachment_id, 'rtgodam_transcoding_error_code' );
+
+					if ( 'document' === $job_type ) {
+						/*
+						 * Drop any preview from a previous render of this attachment. The job row
+						 * is reused for a retranscode or an in-place replacement, so the stored
+						 * preview belongs to the file that WAS here — leaving it in place would
+						 * keep serving the old document's contents until the callback arrives, and
+						 * forever if the job fails, since the error path never reaches the
+						 * callback's cleanup. A document with no preview shows the download-only
+						 * panel, and 'Queued' above makes the block show progress meanwhile.
+						 */
+						delete_post_meta( $attachment_id, 'rtgodam_preview_pdf_url' );
+					}
+
+					if ( $manual_retranscode ) {
+						$failed_transcoding_attachments = get_option( 'rtgodam-failed-transcoding-attachments', array() );
+
+						if ( isset( $failed_transcoding_attachments[ $attachment_id ] ) ) {
+							unset( $failed_transcoding_attachments[ $attachment_id ] );
+							update_option( 'rtgodam-failed-transcoding-attachments', $failed_transcoding_attachments );
+						}
+					}
+				}
+			}
+
+			if ( is_wp_error( $upload_page ) || 500 <= intval( $upload_page['response']['code'] ) ) {
+				$failed_transcoding_attachments = get_option( 'rtgodam-failed-transcoding-attachments', array() );
+
+				// Preserve the existing retry_count so the cron-job retry limiter is not reset
+				// when a subsequent 5xx response re-adds this attachment to the queue.
+				$existing_retry_count = 0;
+				if ( isset( $failed_transcoding_attachments[ $attachment_id ]['retry_count'] ) ) {
+					$existing_retry_count = (int) $failed_transcoding_attachments[ $attachment_id ]['retry_count'];
+				} else {
+					// Handle legacy structures where the option is a numerically indexed list of
+					// arrays containing an 'attachment_id' field.
+					foreach ( $failed_transcoding_attachments as $failed_attachment ) {
+						if ( ! is_array( $failed_attachment ) ) {
+							continue;
+						}
+						if ( isset( $failed_attachment['attachment_id'], $failed_attachment['retry_count'] )
+							&& (int) $failed_attachment['attachment_id'] === (int) $attachment_id
+						) {
+							$existing_retry_count = (int) $failed_attachment['retry_count'];
+							break;
+						}
+					}
+				}
+
+				$failed_transcoding_attachments[ $attachment_id ] = array(
+					'wp_metadata'   => $wp_metadata,
+					'attachment_id' => $attachment_id,
+					'autoformat'    => $autoformat,
+					'retry_count'   => $existing_retry_count,
+				);
+
+				update_option( 'rtgodam-failed-transcoding-attachments', $failed_transcoding_attachments );
+
+				// Mark the attachment as failed immediately so the media library reflects the
+				// error state right away (the cron will clear this once retries succeed or are exhausted).
+				update_post_meta( $attachment_id, 'rtgodam_transcoding_status', 'failed' );
+
+				$max_retries = class_exists( '\RTGODAM\Inc\Cron_Jobs\Retranscode_Failed_Media' )
+					? \RTGODAM\Inc\Cron_Jobs\Retranscode_Failed_Media::MAX_RETRY_ATTEMPTS
+					: 3;
+
+				update_post_meta(
+					$attachment_id,
+					'rtgodam_transcoding_error_msg',
+					sprintf(
+						/* translators: 1: max retry attempts, 2: retry interval in minutes */
+						__( 'GoDAM Central returned a server error. Transcoding will be retried automatically (up to %1$d times, every %2$d minutes).', 'godam' ),
+						$max_retries,
+						10
+					)
+				);
+
+				// Show a brief admin notice for the next 5 minutes.
+				update_option( 'rtgodam-transcoding-failed-notice-timestamp', time() );
+			}
+		}
+
+		return $wp_metadata;
+	}
+
+	/**
+	 * Get number of thumbnails required to generate for video.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $attachment_id    ID of attachment.
+	 *
+	 * @return int $thumb_count
+	 */
+	public function get_thumbnails_required( $attachment_id = '' ) {
+
+		$thumb_count = $this->easydam_settings['video']['video_thumbnails'];
+
+		/**
+		 * Allow user to filter number of thumbnails required to generate for video.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param int $thumb_count    Number of thumbnails set in setting.
+		 * @param int $attachment_id  ID of attachment.
+		 */
+		$thumb_count = apply_filters( 'rtgodam_media_total_video_thumbnails', $thumb_count, $attachment_id );
+
+		return $thumb_count > 10 ? 10 : $thumb_count;
+	}
+
+	/**
+	 * Check api key is valid or not.
+	 *
+	 * @since   1.0.0
+	 *
+	 * @param string $key    Api Key.
+	 *
+	 * @return boolean $status  If true then key is valid else key is not valid.
+	 */
+	public function is_valid_key( $key ) {
+		$validate_url = trailingslashit( $this->store_url ) . '/resource/api_key/' . $key;
+		if ( function_exists( 'vip_safe_wp_remote_get' ) ) {
+			$validation_page = vip_safe_wp_remote_get( $validate_url, '', 3, 3 );
+		} else {
+			$validation_page = wp_safe_remote_get( $validate_url ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_remote_get_wp_remote_get
+		}
+		if ( ! is_wp_error( $validation_page ) ) {
+			$validation_info = json_decode( $validation_page['body'] );
+			if ( isset( $validation_info->data->status ) && 'Active' === $validation_info->data->status ) {
+				$status = true;
+			}
+		} else {
+			$status = false;
+		}
+
+		return $status;
+	}
+
+	/**
+	 * Save usage information.
+	 *
+	 * @since   1.0.0
+	 *
+	 * @param string $key  Api key.
+	 *
+	 * @return array $usage_info  An array containing usage information.
+	 */
+	public function update_usage( $key ) {
+
+		$response = rtgodam_verify_api_key( $key );
+
+		// Check if response is WP_Error before accessing array elements.
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		update_option( 'rtgodam-usage', array( $key => (object) $response['data'] ) );
+
+		return $response;
+	}
+
+	/**
+	 * Display message when user subscribed successfully.
+	 *
+	 * @since 1.0.0
+	 */
+	public function successfully_subscribed_notice() {
+		?>
+		<div class="updated">
+			<p>
+				<?php
+				$api_key_updated = rtgodam_filter_input( INPUT_GET, 'api-key-updated', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
+				printf(
+					wp_kses(
+						__( 'You have successfully subscribed.', 'godam' ),
+						array(
+							'strong' => array(),
+						)
+					),
+					esc_html( sanitize_text_field( wp_unslash( $api_key_updated ) ) )
+				);
+				?>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Display message when API key is not valid.
+	 *
+	 * @since 1.0.0
+	 */
+	public function invalid_api_key_notice() {
+		?>
+		<div class="error">
+			<p>
+				<?php esc_html_e( 'This API key is invalid.', 'godam' ); ?>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Display message when user tries to activate API key on localhost.
+	 *
+	 * @since 1.0.6
+	 */
+	public function public_host_needed_notice() {
+		?>
+		<div class="error">
+			<p>
+				<?php esc_html_e( 'Transcoding service can not be activated on the localhost', 'godam' ); ?>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Save thumbnails for transcoded video.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $post_array  Attachment data.
+	 *
+	 * @return string
+	 */
+	public function add_media_thumbnails( $post_array ) {
+		$defaults = array(
+			'post_id' => '',
+			'job_for' => '',
+		);
+
+		// Parse incoming $post_array into an array and merge it with $defaults.
+		$post_array = wp_parse_args( $post_array, $defaults );
+
+		do_action( 'rtgodam_before_thumbnail_store', $post_array['post_id'], $post_array );
+
+		$post_id           = $post_array['post_id'];
+		$post_thumbs       = $post_array;
+		$post_thumbs_array = maybe_unserialize( $post_thumbs );
+
+		$thumbnail_urls      = array();
+		$placeholder_map     = array();
+		$first_thumbnail_url = false;
+
+		$raw_thumbnails   = $post_thumbs_array['thumbnail'];
+		$raw_placeholders = ! empty( $post_thumbs_array['placeholder_thumbnail'] ) && is_array( $post_thumbs_array['placeholder_thumbnail'] )
+			? $post_thumbs_array['placeholder_thumbnail']
+			: array();
+
+		// Iterate both parallel arrays by the same raw index so positions stay aligned.
+		foreach ( $raw_thumbnails as $idx => $thumbnail_url ) {
+			$sanitized_url = esc_url_raw( $thumbnail_url );
+			if ( empty( $sanitized_url ) ) {
+				continue;
+			}
+
+			$thumbnail_urls[] = $sanitized_url;
+
+			if ( isset( $raw_placeholders[ $idx ] ) ) {
+				$sanitized_placeholder = esc_url_raw( $raw_placeholders[ $idx ] );
+				if ( ! empty( $sanitized_placeholder ) ) {
+					$placeholder_map[ $sanitized_url ] = $sanitized_placeholder;
+				}
+			}
+		}
+
+		if ( ! empty( $thumbnail_urls ) ) {
+			$first_thumbnail_url = $thumbnail_urls[0];
+		}
+
+		$media_id = null;
+		if ( class_exists( 'RTMediaModel' ) ) {
+			$model = new RTMediaModel();
+			$media = $model->get( array( 'media_id' => $post_id ) );
+
+			if ( ! empty( $media ) && isset( $media[0] ) ) {
+				$media_id = $media[0]->id;
+
+				$this->media_author             = $media[0]->media_author;
+				$this->uploaded['context']      = $media[0]->context;
+				$this->uploaded['context_id']   = $media[0]->context_id;
+				$this->uploaded['media_author'] = $media[0]->media_author;
+			}
+		}
+
+		// rtMedia support.
+		update_post_meta( $post_id, '_rt_media_source', $post_thumbs_array['job_for'] ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+		update_post_meta( $post_id, '_rt_media_thumbnails', $thumbnail_urls ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+
+		update_post_meta( $post_id, 'rtgodam_media_source', $post_thumbs_array['job_for'] ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+		update_post_meta( $post_id, 'rtgodam_media_thumbnails', $thumbnail_urls ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+
+		// Store thumbnail → placeholder mapping, or clear stale meta when no valid placeholders.
+		if ( ! empty( $placeholder_map ) ) {
+			update_post_meta( $post_id, 'rtgodam_media_placeholder_thumbnails', $placeholder_map ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+		} else {
+			delete_post_meta( $post_id, 'rtgodam_media_placeholder_thumbnails' ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+		}
+
+		do_action( 'rtgodam_transcoded_thumbnails_added', $post_id );
+
+		if ( $first_thumbnail_url ) {
+
+			// rtMedia support.
+			update_post_meta( $post_id, '_rt_media_video_thumbnail', $first_thumbnail_url ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+
+			if ( class_exists( 'RTMediaModel' ) && ! empty( $media_id ) ) {
+				$model->update( array( 'cover_art' => $first_thumbnail_url ), array( 'media_id' => $post_id ) );
+				update_activity_after_thumb_set( $media_id );
+			}
+
+			$current_thumbnail = get_post_meta( $post_id, 'rtgodam_media_video_thumbnail', true ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+			$custom_thumbnails = get_post_meta( $post_id, 'rtgodam_custom_media_thumbnails', true ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+			$custom_thumbnails = is_array( $custom_thumbnails ) ? $custom_thumbnails : array();
+
+			// If the current selected thumbnail is NOT one of the custom uploaded thumbnails, overwrite it.
+			if ( empty( $current_thumbnail ) || ! in_array( $current_thumbnail, $custom_thumbnails, true ) ) {
+				update_post_meta( $post_id, 'rtgodam_media_video_thumbnail', $first_thumbnail_url ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+				// Sync placeholder for the newly set primary thumbnail using the verified map.
+				if ( isset( $placeholder_map[ $first_thumbnail_url ] ) ) {
+					update_post_meta( $post_id, 'rtgodam_media_video_placeholder_thumbnail', $placeholder_map[ $first_thumbnail_url ] ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+				} else {
+					delete_post_meta( $post_id, 'rtgodam_media_video_placeholder_thumbnail' ); // godam-coverage-ignore -- add_media_thumbnails(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+				}
+			}
+
+			/**
+			 * Allow users/plugins to access the thumbnail file which is got stored as a thumbnail
+			 *
+			 * @since 1.0.7
+			 *
+			 * @param string    $largest_thumb  Absolute URL of the thumbnail
+			 * @param int       $post_id        Attachment ID of the video for which thumbnail has been set
+			 */
+			do_action( 'rtgodam_transcoded_thumb_added', $first_thumbnail_url, $post_id );
+		}
+
+		return $first_thumbnail_url;
+	}
+
+	/**
+	 * Save transcoded media files.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array  $file_post_array   Transcoded files.
+	 * @param int    $attachment_id     ID of attachment.
+	 * @param string $job_for           Whether media uploaded through rtmedia plugin or WordPress media.
+	 */
+	public function add_transcoded_files( $file_post_array, $attachment_id, $job_for = '' ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+		$transcoded_files = false;
+		global $wpdb;
+
+		do_action( 'rtgodam_before_transcoded_media_store', $attachment_id, $file_post_array );
+
+		if ( isset( $file_post_array ) && is_array( $file_post_array ) && ( count( $file_post_array ) > 0 ) ) {
+			foreach ( $file_post_array as $key => $format ) {
+				if ( is_array( $format ) && ( count( $format ) > 0 ) ) {
+					foreach ( $format as $file ) {
+						if ( isset( $file ) ) {
+
+							$download_url                  = urldecode( urldecode( $file ) );
+							$new_wp_attached_file_pathinfo = pathinfo( $download_url );
+							$post_mime_type                = 'mp4' === $new_wp_attached_file_pathinfo['extension'] ? 'video/mp4' : 'audio/mp3';
+							$attachemnt_url                = wp_get_attachment_url( $attachment_id );
+
+							$timeout = 5;
+
+							if ( 'video/mp4' === $post_mime_type ) {
+								$timeout = 120;
+							}
+
+							try {
+								$response = function_exists( 'vip_safe_wp_remote_get' ) ? vip_safe_wp_remote_get( $download_url, '', 3, 3 ) : wp_remote_get( $download_url, array( 'timeout' => $timeout ) ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_remote_get_wp_remote_get
+							} catch ( Exception $e ) {
+								return;
+							}
+
+							$file_content = wp_remote_retrieve_body( $response );
+
+							if ( ! empty( $file_content ) ) {
+
+								/**
+								 * Allows users/plugins to filter the transcoded file Name
+								 *
+								 * @since 1.3.2
+								 *
+								 * @param string $new_wp_attached_file_pathinfo['basename']  Contains the file public name
+								 */
+								$file_name = apply_filters( 'rtgodam_transcoded_video_filename', $new_wp_attached_file_pathinfo['basename'] );
+
+								// Verify Extension.
+								if ( empty( pathinfo( $file_name, PATHINFO_EXTENSION ) ) ) {
+									$file_name .= '.' . $new_wp_attached_file_pathinfo['extension'];
+								}
+
+								$upload_info = wp_upload_bits( $file_name, null, $file_content );
+
+								/**
+								 * Allow users to filter/perform action on uploaded transcoded file.
+								 *
+								 * @since 1.0.5
+								 *
+								 * @param array $upload_info    Array contains the uploaded file url and Path
+								 *                              i.e $upload_info['url'] contains the file URL
+								 *                              and $upload_info['file'] contains the file physical path
+								 * @param int  $attachment_id   Contains the attachment ID for which transcoded file is uploaded
+								 */
+								$upload_info = apply_filters( 'rtgodam_transcoded_file_stored', $upload_info, $attachment_id );
+
+								$uploaded_file = _wp_relative_upload_path( $upload_info['file'] );
+								if ( ! empty( $uploaded_file ) ) {
+									$transcoded_files[ $key ][] = $uploaded_file;
+									update_post_meta( $attachment_id, '_wp_attached_file', $uploaded_file );
+									update_post_meta( $attachment_id, 'rtgodam_transcoded_url', $download_url );
+
+									$mime_type = get_post_mime_type( $attachment_id );
+
+									if ( strpos( $mime_type, 'audio' ) !== false ) {
+										wp_update_post( // godam-coverage-ignore -- add_transcoded_files(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+											array(
+												'ID' => $attachment_id,
+												'post_mime_type' => 'audio/mp3',
+											)
+										);
+									} else {
+										wp_update_post( // godam-coverage-ignore -- add_transcoded_files(): covered transitively — sole caller (handle_wp_media_transcoding_callback) already runs inside its own caller's before/after pair.
+											array(
+												'ID' => $attachment_id,
+												'post_mime_type' => 'video/mp4',
+											)
+										);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if ( ! empty( $transcoded_files ) ) {
+			update_post_meta( $attachment_id, 'rtgodam_media_transcoded_files', $transcoded_files );
+			do_action( 'rtgodam_transcoded_media_added', $attachment_id );
+		}
+	}
+
+	/**
+	 * Get post id from meta key and value.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $key   Meta key.
+	 * @param mixed  $value Meta value.
+	 *
+	 * @return int|bool     Return post id if found else false.
+	 */
+	public function get_post_id_by_meta_key_and_value( $key, $value ) {
+		global $wpdb;
+		$cache_key = md5( 'meta_key_' . $key . '_meta_value_' . $value );
+
+		$meta = wp_cache_get( $cache_key, 'godam' );
+		if ( empty( $meta ) ) {
+			$meta = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s", $key, $value ) );  // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, godam-coverage-ignore -- get_post_id_by_meta_key_and_value(): covered transitively — every real call site (rest-routes.php, including via handle_wp_media_transcoding_callback, and class-video-migration.php) already runs inside its own before/after pair.
+			wp_cache_set( $cache_key, $meta, 'godam', HOUR_IN_SECONDS );
+		}
+
+		if ( is_array( $meta ) && ! empty( $meta ) && isset( $meta[0] ) ) {
+			$meta = $meta[0];
+		}
+		if ( is_object( $meta ) ) {
+			return $meta->post_id;
+		} else {
+			return false;
+		}
+	}
+}

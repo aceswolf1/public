@@ -1,0 +1,26 @@
+/**
+ * CSS code for the "Email Notification" Screen.
+ *
+ * @package TablePress
+ * @subpackage Email Notification
+ * @author Tobias Bäthge
+ * @since 3.1.0
+ */
+
+#tablepress-email-notifications-screen {
+	/* Add more space between the individual panel rows. */
+	.components-panel__row:not(:first-of-type) {
+		margin-top: 16px;
+	}
+
+	/* Move the PlaceholderInserter component up, for better alignment with the input field on its left. */
+	.components-dropdown {
+		margin-bottom: 2px;
+	}
+
+	/* The PlaceholderInserter component can only be disabled artificially. */
+	.components-disabled .components-button {
+		cursor: default;
+		color: #949494;
+	}
+}

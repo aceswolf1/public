@@ -1,0 +1,137 @@
+<?php
+/**
+ * Extend FluentForms.
+ *
+ * @package GoDAM
+ */
+
+namespace RTGODAM\Inc\FluentForms;
+
+use RTGODAM\Inc\FluentForms\Fields\Recorder_Field;
+use RTGODAM\Inc\Traits\Singleton;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Class Init.
+ */
+class Init {
+
+	use Singleton;
+
+	/**
+	 * Is FluentForms active?
+	 *
+	 * @access private
+	 * @var bool
+	 */
+	private $is_fluentforms_active = false;
+
+	/**
+	 * Constructor.
+	 */
+	protected function __construct() {
+
+		$this->is_fluentforms_active = $this->check_fluentforms_active();
+
+		/**
+		 * Add only if fluentforms is active.
+		 */
+		if ( $this->is_fluentforms_active ) {
+			$this->load_fluentforms_classes();
+		}
+	}
+
+	/**
+	 * To check if fluentforms plugins is active.
+	 *
+	 * @return bool
+	 */
+	private function check_fluentforms_active() {
+
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			/**
+			 * Required to check for the `is_plugin_active` function.
+			 */
+			require_once ABSPATH . '/wp-admin/includes/plugin.php';
+		}
+
+		return is_plugin_active( 'fluentform/fluentform.php' );
+	}
+
+	/**
+	 * Function to load the fluentforms integration class with GoDAM.
+	 *
+	 * @return void
+	 */
+	public function load_fluentforms_classes() {
+
+		/**
+		 * Load the field on `init`.
+		 *
+		 * It used to load on `fluentform/loaded`, which fires during
+		 * `plugins_loaded`. The recorder field translates its labels in the
+		 * constructor, so the field was translating before any text domain was
+		 * available, which WordPress 6.7+ reports as
+		 * `_load_textdomain_just_in_time was called incorrectly`.
+		 *
+		 * @see https://github.com/rtCamp/godam/issues/465
+		 */
+		add_action( 'init', array( $this, 'on_fluentforms_loaded' ) );
+
+		/**
+		 * Filter to exclude godam scripts on fluent forms pages.
+		 */
+		add_filter( 'fluentform/exclude_js_slugs_from_dequeue', array( $this, 'exclude_godam_scripts' ) );
+	}
+
+	/**
+	 * Add functionality on loaded.
+	 *
+	 * `Recorder_Field extends BaseFieldManager` unconditionally, so loading it
+	 * before FluentForms has declared that class is a fatal. On
+	 * `fluentform/loaded` that could not happen. On `init` it can: the constructor
+	 * only checked that the plugin is in `active_plugins`, which stays true when
+	 * FluentForms aborts its own bootstrap.
+	 *
+	 * @return void
+	 */
+	public function on_fluentforms_loaded() {
+
+		if ( ! class_exists( 'FluentForm\App\Services\FormBuilder\BaseFieldManager' ) ) {
+			return;
+		}
+
+		/**
+		 * Add recorder field.
+		 */
+		Recorder_field::get_instance();
+
+		/**
+		 * Form Submission handler.
+		 */
+		Form_Submit::get_instance();
+	}
+
+	/**
+	 * Exclude slugs from dequeue.
+	 *
+	 * @param array $slugs Script handle to exclude from dequeue.
+	 *
+	 * @return array
+	 */
+	public function exclude_godam_scripts( $slugs ) {
+
+		/**
+		 * Frontend player and analytics.
+		 */
+		$new = array( 'godam-player-frontend', 'godam-player-analytics', 'admin' );
+
+		/**
+		 * Add to slugs array.
+		 */
+		array_push( $slugs, ...$new );
+
+		return $slugs;
+	}
+}

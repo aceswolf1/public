@@ -1,0 +1,249 @@
+/**
+ * Common CSS code for Premium Modules on the "Edit" screen.
+ *
+ * @package TablePress
+ * @subpackage Modules
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+// Load the Sass string module, for use in the `unicode` function.
+@use "sass:string";
+
+// Ensure that Unicode characters are embedded in ASCII-encoded form.
+@function unicode($str) {
+	@return string.unquote("\"") + string.unquote(string.insert($str, "\\", 1)) + string.unquote("\"");
+}
+
+details {
+	summary {
+		cursor: pointer;
+	}
+
+	> div {
+		margin: 1em 0 0.2em 0.5em;
+
+		> table {
+			margin-top: -0.5em;
+		}
+	}
+}
+
+.input-field-box {
+	$color-active: var(--wp-admin-theme-color);
+	$color-inactive: #cccccc;
+
+	display: inline-block;
+	position: relative;
+	box-sizing: border-box;
+	width: 110px;
+	height: 110px;
+	vertical-align: top;
+	margin: 10px 14px 10px 0;
+	user-select: none;
+
+	> label {
+		box-sizing: border-box;
+		height: 100%;
+		display: block;
+		background: #ffffff;
+		border: 2px solid $color-inactive;
+		border-radius: 2px;
+		padding: 10px;
+		position: relative;
+
+		.box-title {
+			font-size: 15px;
+			font-weight: bold;
+		}
+
+		.description {
+			line-height: normal;
+		}
+	}
+
+	> input.control-input {
+		position: absolute;
+		left: -9999px;
+		width: 0;
+		height: 0;
+		appearance: none;
+
+		+ label {
+			cursor: pointer;
+		}
+
+		&:disabled + label {
+			cursor: not-allowed;
+			opacity: 0.5;
+		}
+
+		&:checked:not(:disabled) + label {
+			border-color: $color-active;
+
+			&:after {
+				$size: 18px;
+				position: absolute;
+				top: -10px;
+				right: -10px;
+				width: $size;
+				height: $size;
+				line-height: $size;
+				border-radius: 100%;
+				border: 2px solid $color-active;
+				background-color: #ffffff;
+				color: $color-active;
+				font-weight: bold;
+				font-size: 15px;
+				text-align: center;
+				content: unicode("25cf");
+			}
+		}
+
+		&:focus + label,
+		&:not(:disabled) + label:hover {
+			border-color: $color-inactive;
+			box-shadow: 0 0 0 1px $color-inactive;
+			outline: 2px solid transparent;
+		}
+
+		&:checked:focus + label,
+		&:checked:not(:disabled) + label:hover {
+			&,
+			&:after {
+				border-color: $color-active;
+				box-shadow: 0 0 0 1px $color-active;
+				outline: 2px solid transparent;
+			}
+		}
+	}
+
+	> input.control-input[type="checkbox"] {
+		&:checked:not(:disabled) + label:after {
+			border-radius: 2px;
+			content: unicode("2713");
+		}
+	}
+}
+
+.drag-box {
+	$color-active: var(--wp-admin-theme-color);
+	$color-inactive: #cccccc;
+	user-select: none;
+
+	&,
+	&-placeholder {
+		display: inline-block;
+		box-sizing: border-box;
+		min-width: 66px;
+		height: 28px;
+		vertical-align: top;
+	}
+
+	&-placeholder {
+		border: 3px dotted $color-inactive;
+		border-radius: 2px;
+	}
+
+	> div {
+		background: #ffffff;
+		border: 2px solid $color-inactive;
+		border-radius: 2px;
+		padding: 2px 10px;
+		text-align: center;
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	> input {
+		+ div {
+			cursor: move;
+		}
+
+		&:disabled + div {
+			cursor: not-allowed;
+			opacity: 0.5;
+		}
+
+		&:not(:disabled) + div:hover {
+			border-color: $color-inactive;
+			box-shadow: 0 0 0 1px $color-inactive;
+			outline: 2px solid transparent;
+		}
+
+		#datatables-buttons-drag-box-wrapper-active &:not(:disabled) + div {
+			border-color: $color-active;
+
+			&:hover {
+				box-shadow: 0 0 0 1px $color-active;
+				outline: 2px solid transparent;
+			}
+		}
+
+		#tablepress_edit-datatables-layout .drag-box-wrapper:not(.drag-box-wrapper-available) &:not(:disabled) + div {
+			border-color: $color-active;
+
+			&:hover {
+				box-shadow: 0 0 0 1px $color-active;
+				outline: 2px solid transparent;
+			}
+		}
+	}
+
+	&-section-wrapper {
+		display: flex;
+		align-items: center;
+	}
+
+	&-wrapper {
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		width: 100%;
+		max-width: 600px;
+		min-height: 52px;
+		gap: 8px;
+		padding: 8px;
+		border: 2px dotted $color-inactive;
+		border-radius: 2px;
+
+		&-label {
+			min-width: 120px;
+		}
+	}
+}
+
+/* Reset style from postboxes that pollute components' styles. */
+#poststuff {
+	.components-panel__body {
+		> .components-panel__body-title {
+			padding: 0;
+		}
+
+		&.is-opened > .components-panel__body-title {
+			margin: -16px -16px 5px;
+		}
+	}
+}
+
+/* "Page is being loaded" box. */
+.section-has-react-loading-text .react-loading-text {
+	font-size: 14px;
+	font-weight: bold;
+	padding: 9px 0;
+	margin: 1.5rem 0;
+
+	/* Manually hide the loading text after a React component as loaded as React's createPortal does not replace the container element's DOM. */
+	&:has(+ div) {
+		display: none;
+	}
+}
+
+#tablepress-datatables-alphabetsearch-section {
+	/* Show RadioButtons next to each other (by default the component uses VStack). */
+	.components-radio-control__group-wrapper {
+		flex-direction: row;
+		justify-content: flex-start;
+		gap: 20px;
+	}
+}

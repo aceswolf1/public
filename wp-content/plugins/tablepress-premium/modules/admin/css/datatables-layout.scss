@@ -1,0 +1,114 @@
+/**
+ * CSS code for "DataTables Layout UI" module on the "Edit" screen.
+ *
+ * @package TablePress
+ * @subpackage Modules
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+#tablepress_edit-datatables-layout {
+	.drag-box-wrapper {
+		max-width: none;
+		padding: 5px;
+		gap: 5px;
+		min-height: 42px;
+	}
+
+	.drag-box-table-section {
+		padding: 1rem;
+		margin: 2rem 1rem;
+		border: 1px solid #dddddd;
+		border-radius: 2px;
+
+		&:after {
+			content: "";
+			display: block;
+			clear: both;
+		}
+	}
+
+	.drag-box-section {
+		max-width: 800px;
+		margin-top: 1rem;
+	}
+
+	.drag-box-section-label {
+		float: left;
+		min-width: 120px;
+		padding-top: 9px;
+	}
+
+	.drag-box-section-wrapper {
+		display: block;
+		box-sizing: border-box;
+		padding: 2px;
+	}
+
+	.drag-box-section-wrapper-full {
+		width: 100%;
+		clear: both;
+
+		.drag-box-wrapper:not(.drag-box-wrapper-available) {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			flex-wrap: wrap;
+
+			> *:only-child,
+			> .drag-box.ui-sortable-helper:first-child + .drag-box:last-child,
+			> .drag-box:first-child:has(+ .drag-box.ui-sortable-helper:last-child),
+			> .drag-box.ui-sortable-helper:first-child + .drag-box-placeholder:last-child {
+				margin: auto;
+			}
+		}
+	}
+
+	.drag-box-section-wrapper-start {
+		width: 50%;
+		float: left;
+		clear: both;
+	}
+
+	.drag-box-section-wrapper-end {
+		width: 50%;
+		float: right;
+
+		.drag-box-wrapper {
+			justify-content: flex-end;
+		}
+	}
+
+	.drag-box-wrapper-available {
+		flex-wrap: wrap;
+		width: auto;
+		border: none;
+
+		.drag-box {
+			display: inline-block !important;
+		}
+
+		.drag-box-placeholder {
+			display: none !important;
+		}
+	}
+
+	.drag-box-wrapper-table {
+		$color-active: var(--wp-admin-theme-color);
+
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 42px;
+		border: 1px solid $color-active;
+		border-radius: 0;
+		font-size: 14px;
+		font-weight: bold;
+		background-color: #eeeeee;
+	}
+
+	.drag-box,
+	.drag-box-placeholder {
+		min-width: 90px;
+	}
+}

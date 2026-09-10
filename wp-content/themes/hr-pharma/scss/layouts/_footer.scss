@@ -1,0 +1,248 @@
+.footer {
+	&__top {
+		max-width: 1500px;
+		margin: 0 auto;
+		@include blue_bg();
+		color: #fff;
+		padding: 70px 0px 50px;
+		border-top-right-radius: 120px;
+		position: relative;
+
+		&:after {
+			content: '';
+			position: absolute;
+			top: 0;
+			right: 50%;
+			bottom: 0;
+			width: 1800px;
+			background: radial-gradient(at top right, $primary_light, $primary);
+			z-index: 0;
+		}
+
+		.flex {
+			z-index: 1;
+			position: relative;
+
+			> div {
+				width: 100%;
+			}
+			.widget {
+				width: 100%;
+				box-sizing: border-box;
+
+				&__title {
+					@include header_font();
+					font-weight: bold;
+					font-size: 1.3em;
+				}
+
+				p {
+					margin-bottom: 0.75em;
+				}
+
+				a {
+					color: #cfcfcf;
+					text-decoration: underline;
+					text-underline-offset: 2px;
+					text-decoration-color: rgba(#cfcfcf, .5);
+					font-weight: inherit;
+					transition: color 250ms, text-decoration-color 250ms;
+
+					&:hover {
+						color: #fff;
+						text-decoration-color: rgba(#fff, .7);
+
+						&:before {
+							border-color: transparent transparent transparent #fff;
+						}
+					}
+				}
+
+				.icon-content {
+					display: flex;
+
+					&__icon {
+						min-width: 20px;
+						text-align: center;
+						margin-right: 7px;
+
+						svg {
+							color: $secondary;
+							padding-top: 3px;
+						}
+					}
+				}
+
+				ul {
+					margin: 0;
+					list-style: none;
+
+					li {
+						position: relative;
+						padding-left: 15px;
+
+						a:before {
+							$size: 5px;
+							position: absolute;
+							top: 7px;
+							left: 0;
+							transition: border-color 250ms;
+
+							content: '';
+							width: 0;
+							height: 0;
+							border-style: solid;
+							border-width: $size 0 $size $size;
+							border-color: transparent transparent transparent $secondary;
+						}
+					}
+				}
+
+				&.gform_widget {
+					position: relative;
+
+					ul.gform_fields li.gfield {
+					    padding: 0;
+
+					    .gfield_label {
+					    	font-weight: inherit;
+
+					    	.gfield_required {
+					    		color: #ef5555;
+					    	}					    	
+					    }
+
+					    input[type="text"] {
+					    	width: 80%;
+					    	border: none;
+					    	border-radius: 15px;
+					    	padding: 10px 20px;
+					    	font-size: .9em;
+
+					    	&::placeholder {
+					    		color: #cfcfcf;
+					    	}
+					    }
+					}
+
+					.gform_footer {
+						position: absolute;
+						right: 20%;
+						bottom: 0px;
+						background: $secondary;
+						width: 70px;
+						height: 38px;
+						padding: 10px 25px;
+					    border-radius: 15px;
+
+						input[type="image"] {
+							max-width: 20px;
+							max-height: 20px;
+							outline: 0;
+						}
+					}
+
+					div.validation_error {
+					    color: #ef5555;
+					    font-size: 1em;
+					    font-weight: 700;
+					    margin-bottom: 25px;
+					    border-top: 2px solid #ef5555;
+					    border-bottom: 2px solid #ef5555;
+					    padding: 16px 0 16px 0;
+					    clear: both;
+					    width: 100%;
+					    text-align: center;
+					}
+
+					.gfield_error .gfield_label {
+					    color: #fff;
+					}
+
+					.validation_message {
+					    color: #ef5555;
+					}
+
+					li.gfield_error input:not([type=radio]):not([type=checkbox]):not([type=submit]):not([type=button]):not([type=image]):not([type=file]), .gform_wrapper li.gfield_error textarea {
+					    border: 1px solid #ef5555;
+					}
+
+					li.gfield.gfield_error, 
+					li.gfield.gfield_error.gfield_contains_required.gfield_creditcard_warning {
+					    background-color: rgba(#fff, .15);
+					    margin-bottom: 6px!important;
+					    border-top: none;
+					    border-bottom: none;
+					    padding-bottom: 6px;
+					    padding-top: 8px;
+					    box-sizing: border-box;
+					}
+				}
+			}
+
+			@include mobile (700px) {
+				flex-direction: column;
+			}
+		}
+
+		a {
+			color: #fff;
+			text-decoration: none;
+
+			&:hover {
+				text-decoration: underline;
+			}
+		}
+		
+		// links inside paragraphs
+		p a {
+			font-weight: 600;
+		}
+
+		ul li {
+			margin-bottom: 7px;
+		}
+	}
+
+	&__bottom {
+		background: #333;
+		color: #aaa;
+		font-size: .7em;
+		padding: 1.5em 0;
+		text-align: center;
+
+		@include mobile (700px) {
+			& > .flex {
+				flex-direction: column;
+				align-items: center;
+
+				& > p,
+				& > nav {
+					margin-bottom: 10px;
+				}
+			}
+		}
+
+		p {
+			margin-bottom: 0;
+		}
+
+		a {
+			color: #aaa;
+
+			&:hover {
+				color: #fff;
+				text-decoration: underline;
+			}
+		}
+
+		nav {
+			display: flex;
+			align-items: center;
+
+			ul li:after {
+				background: rgba(#aaa, .5);
+			}
+		}
+	}
+}

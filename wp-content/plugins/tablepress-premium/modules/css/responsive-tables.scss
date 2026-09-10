@@ -1,0 +1,490 @@
+/**
+ * TablePress Responsive Tables CSS.
+ *
+ * @package TablePress
+ * @subpackage Responsive Tables
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+// Load the Sass string module, for use in the `unicode` function.
+@use "sass:string";
+
+// Ensure that Unicode characters are embedded in ASCII-encoded form.
+@function unicode($str) {
+	@return string.unquote("\"") + string.unquote(string.insert($str, "\\", 1)) + string.unquote("\"");
+}
+
+/* Default toggle variable for LTR and RTL CSS. */
+$direction: "ltr" !default;
+
+/* Default variables for the LTR CSS. */
+$align-side: left;
+$align-side-opposite: right;
+$flip-rotate: -90deg;
+
+/* Variables for the RTL CSS. */
+@if "rtl" == $direction {
+	$align-side: right;
+	$align-side-opposite: left;
+	$flip-rotate: 90deg;
+}
+
+/* Scroll mode */
+
+.tablepress-scroll-wrapper {
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-behavior: smooth;
+
+	/* Don't scroll DataTables UI elements together with the table. */
+	> .dt-container {
+		min-width: fit-content; /* Setting the width directly can have side effects when scrolling is not actually needed for the table. */
+
+		@media screen and (max-width: 767px) {
+			.dt-layout-row {
+				flex-direction: row;
+			}
+		}
+
+		/* Make the position of elements in the "top" feature position sticky. */
+		:where(.dt-layout-row:not(.dt-layout-table)) .dt-layout-cell.dt-layout-full {
+			width: auto;
+		}
+
+		.dt-layout-cell {
+			&.dt-layout-full,
+			&.dt-layout-start {
+				position: sticky;
+				left: 0;
+			}
+
+			&.dt-layout-end {
+				position: sticky;
+				right: 1px; /* 1px to prevent visual glitches with borders. */
+				z-index: 1; /* To prevent the table header from overlapping the Fuzzy Search tooltip. */
+
+				@media screen and (max-width: 600px) {
+					margin-top: calc(1lh + 10px);
+				}
+			}
+
+			/* Fix z-index issues when the ColVis overlay is shown. */
+			&.dt-layout-cell:has(>.dt-buttons>.dt-button-background) {
+				z-index: 2000;
+			}
+		}
+	}
+}
+
+.tablepress-scroll-buttons-wrapper-visible {
+	$button-width: 30px;
+
+	clear: both;
+	display: flex;
+
+	.tablepress-scroll-wrapper {
+		width: calc(100% - calc(2 * $button-width));
+	}
+
+	.tablepress-scroll-button {
+		position: sticky;
+		top: 200px;
+		height: 100px;
+		width: $button-width;
+		border: none;
+		cursor: pointer;
+		font-size: larger;
+		padding: 0;
+		background-color: rgba(0, 0, 0, 0.1);
+		margin: 0 0 1rem;
+
+		&:hover {
+			background-color: rgba(0, 0, 0, 0.2);
+		}
+	}
+
+	&:has(.dt-container) .tablepress-scroll-button {
+		margin: 2lh 0 3lh;
+
+		@media screen and (max-width: 600px) {
+			margin: 4lh 0 5lh;
+		}
+	}
+}
+
+.tablepress-scroll-buttons-wrapper:not(.tablepress-scroll-buttons-wrapper-visible) .tablepress-scroll-button {
+	display: none;
+}
+
+/* Stack mode */
+
+.tablepress-responsive-stack-headers tbody td:before {
+	content: attr(data-th) !important;
+	display: none;
+	font-weight: bold;
+	word-break: break-word;
+}
+
+@mixin responsive-stack($device) {
+	.tablepress-responsive-stack-#{$device} {
+		colgroup,
+		thead,
+		tfoot {
+			display: none;
+		}
+
+		tbody {
+			td,
+			th {
+				display: block;
+				text-align: center;
+				border-top: none;
+				width: auto !important;
+			}
+		}
+		tr ~ tr {
+			td:first-child,
+			th:first-child {
+				border-top: 1px solid #dddddd;
+			}
+		}
+
+		&.tablepress-responsive-stack-headers tbody {
+			td:before,
+			th:before {
+				display: block;
+			}
+		}
+	}
+}
+
+@media (max-width: 767px) {
+	@include responsive-stack("phone");
+}
+
+@media (max-width: 979px) {
+	@include responsive-stack("tablet");
+}
+
+@media (max-width: 1199px) {
+	@include responsive-stack("desktop");
+}
+
+@include responsive-stack("all");
+
+/* Flip mode */
+
+@mixin responsive-flip($device) {
+	.tablepress-responsive-#{$device} {
+		display: block;
+		width: 100% !important;
+
+		thead {
+			display: block;
+			float: $align-side;
+
+			tr {
+				th,
+				td {
+					width: auto !important;
+
+					&:not(:last-child) {
+						border-bottom: 1px solid transparent;
+					}
+				}
+			}
+
+			/* Add a non-breaking space to empty header cells (which can only be `td`), to prevent weird width/height issues. */
+			td:empty:before,
+			td:has(.dt-column-title:empty):before {
+				content: unicode("00a0");
+			}
+		}
+
+		tfoot {
+			display: none;
+		}
+
+		tbody {
+			display: block;
+			width: auto;
+			position: relative;
+			overflow-x: auto;
+			white-space: nowrap;
+			text-align: $align-side; /* To align tables with only a few rows on the left. */
+
+			tr {
+				display: inline-block;
+				vertical-align: top;
+
+				td:not(:last-child),
+				th:not(:last-child) {
+					border-bottom: 1px solid #dddddd;
+				}
+			}
+
+			/* Add a non-breaking space to empty body cells (which can only be `td`), to prevent weird width/height issues. */
+			td:empty:before {
+				content: unicode("00a0");
+			}
+		}
+
+		thead tr,
+		thead th,
+		thead td,
+		tbody th,
+		tbody td {
+			display: block;
+			border: none;
+		}
+
+		thead tr:has(+ tr),
+		thead tr + tr {
+			float: $align-side;
+		}
+
+		&.tablepress thead {
+			.dt-orderable-asc,
+			.dt-orderable-desc,
+			.dt-ordering-asc,
+			.dt-ordering-desc {
+				padding-#{$align-side-opposite}: 36px;
+
+				span.dt-column-order {
+					transform: rotate($flip-rotate);
+					#{$align-side-opposite}: 12px;
+				}
+			}
+		}
+
+		.dtfh-floatingparent.dtfh-floatingparent-head & {
+			display: none;
+		}
+	}
+}
+
+@media not print {
+	@media (max-width: 767px) {
+		@include responsive-flip("phone");
+	}
+
+	@media (max-width: 979px) {
+		@include responsive-flip("tablet");
+	}
+
+	@media (max-width: 1199px) {
+		@include responsive-flip("desktop");
+	}
+
+	@include responsive-flip("all");
+}
+
+/* Collapse mode */
+
+@mixin control() {
+	height: var(--responsive-collapse-control-size);
+	width: var(--responsive-collapse-control-size);
+	display: block;
+	position: absolute;
+	border: 2px solid #ffffff;
+	border-radius: var(--responsive-collapse-control-size);
+	box-shadow: 0 0 3px #444444;
+	box-sizing: content-box;
+	text-align: center;
+	text-indent: 0 !important;
+	font-family: monospace !important;
+	font-size: var(--responsive-collapse-control-size);
+	line-height: var(--responsive-collapse-control-size);
+}
+
+@mixin control-open($textcolor, $bgcolor) {
+	content: "+";
+	color: $textcolor;
+	background-color: $bgcolor;
+}
+
+@mixin control-close($textcolor, $bgcolor) {
+	content: "-";
+	color: $textcolor;
+	background-color: $bgcolor;
+}
+
+table.dataTable {
+	--responsive-collapse-control-size: 16px;
+
+	// Styling for the `inline` type.
+	&.dtr-inline.collapsed > tbody {
+		> tr > td.dtr-control,
+		> tr > th.dtr-control {
+			position: relative;
+			padding-#{$align-side}: calc(var(--responsive-collapse-control-size) + 14px);
+			cursor: pointer;
+
+			&:before {
+				@include control;
+				top: 10px;
+				#{$align-side}: 5px;
+				@include control-open(var(--responsive-collapse-expand-text-color, #ffffff), var(--responsive-collapse-expand-bg-color, #31b131));
+			}
+		}
+
+		> tr.dtr-expanded {
+			> td.dtr-control:before,
+			> th.dtr-control:before {
+				@include control-close(var(--responsive-collapse-close-text-color, #ffffff), var(--responsive-collapse-close-bg-color, #d33333));
+			}
+		}
+	}
+
+	// Styling for the `column` type.
+	&.dtr-column > tbody {
+		> tr > td.dtr-control,
+		> tr > th.dtr-control,
+		> tr > td.control,
+		> tr > th.control {
+			position: relative;
+			min-width: calc(var(--responsive-collapse-control-size) + 14px);
+			cursor: pointer;
+
+			&:before {
+				@include control;
+				top: calc(50% - var(--responsive-collapse-control-size) / 2 - 2px);
+				#{$align-side}: calc(50% - 10px);
+				@include control-open(var(--responsive-collapse-expand-text-color, #ffffff), var(--responsive-collapse-expand-bg-color, #31b131));
+			}
+		}
+
+		> tr.dtr-expanded {
+			td.dtr-control:before,
+			th.dtr-control:before,
+			td.control:before,
+			th.control:before {
+				@include control-close(var(--responsive-collapse-close-text-color, #ffffff), var(--responsive-collapse-close-bg-color, #d33333));
+			}
+		}
+	}
+
+	// Child row styling.
+	> tbody > tr.child {
+		ul.dtr-details {
+			display: inline-block;
+			list-style-type: none;
+			margin: 0;
+			padding: 0;
+
+			> li {
+				border-bottom: 1px solid var(--border-color);
+				padding: 0.5em 0;
+
+				&:first-child {
+					padding-top: 0;
+				}
+
+				&:last-child {
+					padding-bottom: 0;
+					border-bottom: none;
+				}
+			}
+		}
+
+		span.dtr-title {
+			display: inline-block;
+			min-width: 75px;
+			font-weight: bold;
+		}
+	}
+}
+
+/* Modal mode */
+
+div.dtr-modal {
+	position: fixed;
+	box-sizing: border-box;
+	top: 0;
+	#{$align-side}: 0;
+	height: 100%;
+	width: 100%;
+
+	z-index: 1000000;
+	padding: 10em 1em;
+
+	div.dtr-modal-display {
+		position: absolute;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		right: 0;
+		width: 50%;
+		height: fit-content;
+		max-height: 75%;
+		overflow: auto;
+		margin: auto;
+		z-index: 1000002;
+		background-color: #f5f5f7;
+		border: 1px solid #000000;
+		border-radius: 0.5em;
+		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+	}
+
+	div.dtr-modal-content {
+		position: relative;
+		padding: 2em;
+	}
+
+	table.dtr-details {
+		border-collapse: collapse;
+
+		td {
+			padding: 0.5em 0.5em 0.5em 0;
+			word-break: break-word;
+
+			&:last-child {
+				padding: 0.5em 0 0.5em 0.5em;
+			}
+		}
+		tr ~ tr td {
+			border-top: 1px solid #888888;
+		}
+	}
+
+	div.dtr-modal-close {
+		position: absolute;
+		top: 0;
+		#{$align-side-opposite}: 8px;
+		font-size: xx-large;
+		text-align: center;
+		border-radius: 3px;
+		cursor: pointer;
+		z-index: 12;
+		line-height: normal;
+	}
+
+	div.dtr-modal-background {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 1000001;
+
+		background: rgba(0, 0, 0, 0.6);
+	}
+}
+
+@media screen and (max-width: 767px) {
+	div.dtr-modal div.dtr-modal-display {
+		width: 95%;
+	}
+}
+
+/* Prevent issues due to mobile Safari changing the font size. */
+.tablepress-responsive {
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+}
+
+/* Fix word wrapping for all modes. */
+.tablepress-responsive * {
+	word-break: normal;
+}

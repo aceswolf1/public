@@ -1,0 +1,46 @@
+/**
+ * External dependencies
+ */
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+
+const restURL = window.godamRestRoute?.url || window.wpApiSettings?.root || '/wp-json/';
+
+export const gravityFormsAPI = createApi( {
+	reducerPath: 'gravityFormsAPI',
+	baseQuery: fetchBaseQuery( {
+		baseUrl: window.pathJoin( [ restURL, '/godam/v1/' ] ),
+		prepareHeaders: ( headers ) => {
+			const nonce = window.godamRestRoute?.nonce || window.wpApiSettings?.nonce;
+			if ( nonce ) {
+				headers.set( 'X-WP-Nonce', nonce );
+			}
+			return headers;
+		},
+	} ),
+	endpoints: ( builder ) => ( {
+		getGravityForms: builder.query( {
+			query: () => ( {
+				url: 'gforms',
+				params: {
+					fields: 'id,title,description',
+				},
+				method: 'GET',
+			} ),
+		} ),
+		getSingleGravityForm: builder.query( {
+			query: ( { id, theme } ) => ( {
+				url: 'gform',
+				params: {
+					id,
+					theme,
+				},
+				method: 'GET',
+			} ),
+		} ),
+	} ),
+} );
+
+export const {
+	useGetGravityFormsQuery,
+	useGetSingleGravityFormQuery,
+} = gravityFormsAPI;

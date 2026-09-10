@@ -1,0 +1,305 @@
+/**
+ * TablePress DataTables SearchBuilder CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables SearchBuilder
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+div.dt-button-collection {
+	overflow: visible !important;
+	z-index: 2002 !important;
+
+	div.dtsb-searchBuilder {
+		box-sizing: border-box;
+		padding-left: 1em !important;
+		padding-right: 1em !important;
+	}
+}
+
+div.dt-button-collection.dtb-collection-closeable {
+	div.dtsb-titleRow {
+		padding-right: 40px;
+	}
+}
+
+.dtsb-greyscale {
+	border: 1px solid #cecece !important;
+}
+
+div.dtsb-logicContainer {
+	.dtsb-greyscale {
+		border: none !important;
+	}
+}
+
+div.dtsb-searchBuilder {
+	justify-content: space-evenly;
+	cursor: default;
+	margin-bottom: 1em;
+	text-align: left;
+	width: 100%;
+
+	div.dtsb-titleRow {
+		justify-content: space-evenly;
+		margin-bottom: 0.5em;
+
+		div.dtsb-title {
+			display: inline-block;
+			padding-top: 14px;
+		}
+
+		div.dtsb-title:empty {
+			display: inline;
+		}
+
+		button.dtsb-clearAll {
+			float: right;
+			margin-bottom: 0.8em;
+		}
+	}
+
+	div.dtsb-vertical {
+		.dtsb-value,
+		.dtsb-data,
+		.dtsb-condition {
+			display: block;
+		}
+	}
+
+	div.dtsb-group {
+		position: relative;
+		clear: both;
+		margin-bottom: 0.8em;
+
+		button.dtsb-search {
+			float: right;
+		}
+
+		button.dtsb-clearGroup {
+			margin: 2px;
+			text-align: center;
+			padding: 0;
+		}
+
+		div.dtsb-logicContainer {
+			transform: rotate(90deg);
+			position: absolute;
+			margin-top: 0.8em;
+			margin-right: 0.8em;
+		}
+
+		div.dtsb-criteria {
+			margin-bottom: 0.8em;
+			display: flex;
+			justify-content: start;
+			flex-flow: row wrap;
+
+			select.dtsb-dropDown,
+			input.dtsb-input {
+				padding: 0.4em;
+				margin-right: 0.8em;
+				min-width: 5em;
+				max-width: 20em;
+				color: inherit;
+				font-size: 1em;
+
+				option.dtsb-notItalic {
+					font-style: normal;
+				}
+			}
+
+			select.dtsb-italic {
+				font-style: italic;
+			}
+
+			div.dtsb-inputCont {
+				flex: 1;
+				white-space: nowrap;
+				span.dtsb-joiner {
+					margin-right: 0.8em;
+				}
+				input.dtsb-value {
+					width: 33%;
+				}
+
+				select,
+				input {
+					height: 100%;
+					box-sizing: border-box;
+				}
+			}
+
+			div.dtsb-buttonContainer {
+				margin-left: auto;
+				display: inline-block;
+
+				button.dtsb-delete,
+				button.dtsb-right,
+				button.dtsb-left {
+					margin-right: 0.8em;
+
+					&:last-child {
+						margin-right: 0;
+					}
+				}
+			}
+
+		}
+
+		@media screen and (max-width: 550px) {
+			div.dtsb-criteria {
+				display: flex;
+				flex-flow: none;
+				flex-direction: column;
+				justify-content: start;
+				padding-right: calc(35px + 0.8em);
+				margin-bottom: 0;
+
+				&:not(:first-child),
+				&:not(:nth-child(2)),
+				&:not(:last-child) {
+					padding-top: 0.8em;
+				}
+
+				&:first-child,
+				&:nth-child(2),
+				&:last-child {
+					padding-top: 0;
+				}
+
+				select.dtsb-dropDown,
+				input.dtsb-input {
+					max-width: none;
+					width: 100%;
+					margin-bottom: 0.8em;
+					margin-right: 0.8em;
+				}
+
+				div.dtsb-inputCont {
+					margin-right: 0.8em;
+				}
+
+				div.dtsb-buttonContainer {
+					position: absolute;
+					width: 35px;
+					display: flex;
+					flex-wrap: wrap-reverse;
+					right: 0;
+
+					button {
+						margin-right: 0 !important;
+					}
+				}
+			}
+		}
+	}
+
+	button,
+	select.dtsb-dropDown,
+	input {
+		background-color: #f9f9f9;
+	}
+
+	select {
+		font-size: 1em;
+	}
+
+	button.dtsb-button {
+		position: relative;
+		display: inline-block;
+		box-sizing: border-box;
+		padding: 0.5em 1em;
+		border: 1px solid rgba(0, 0, 0, 0.3);
+		border-radius: 2px;
+		cursor: pointer;
+		font-size: 0.88em;
+		line-height: normal;
+		color: inherit;
+		white-space: nowrap;
+		overflow: hidden;
+		background: linear-gradient(to bottom, rgba(230, 230, 230, 0.1) 0%, rgba(0, 0, 0, 0.1) 100%);
+		user-select: none;
+		text-decoration: none;
+		outline: none;
+		text-overflow: ellipsis;
+
+		&:hover {
+			background-color: #cecece;
+			cursor: pointer;
+		}
+	}
+
+	div.dtsb-logicContainer {
+		border: 1px solid rgba(0, 0, 0, 0.3);
+		background: linear-gradient(to right, rgba(230, 230, 230, 0.1) 0%, rgba(0, 0, 0, 0.1) 100%);
+
+		button {
+			border: 1px solid transparent;
+			background: transparent;
+		}
+	}
+
+	button.dtsb-clearGroup {
+		min-width: 2em;
+		padding: 0;
+	}
+
+	button.dtsb-iptbtn {
+		min-width: 100px;
+		text-align: left;
+	}
+
+	div.dtsb-group { /* stylelint-disable-line no-duplicate-selectors */
+		div.dtsb-logicContainer { /* stylelint-disable-line no-duplicate-selectors */
+			border: 1px solid;
+			border-color: #cecece;
+			border-radius: 3px;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: flex-start;
+			align-content: flex-start;
+			align-items: flex-start;
+
+			button.dtsb-logic {
+				border: none;
+				border-radius: 0;
+				flex-grow: 1;
+				flex-shrink: 0;
+				flex-basis: 3em;
+				margin: 0;
+			}
+
+			button.dtsb-clearGroup {
+				border: none;
+				border-radius: 0;
+				width: 2em;
+				margin: 0;
+			}
+		}
+
+		div.dtsb-criteria { /* stylelint-disable-line no-duplicate-selectors */
+			/* stylelint-disable-next-line no-duplicate-selectors */
+			select.dtsb-dropDown,
+			input.dtsb-input {
+				border: 1px solid;
+				border-radius: 3px;
+			}
+
+			select.dtsb-condition {
+				border-color: #48b13c;
+			}
+
+			select.dtsb-data {
+				border-color: #e70f00;
+			}
+
+			select.dtsb-value,
+			input.dtsb-value {
+				border-color: #0069ba;
+			}
+		}
+	}
+}

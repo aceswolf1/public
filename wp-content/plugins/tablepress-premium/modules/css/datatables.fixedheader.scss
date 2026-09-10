@@ -1,0 +1,25 @@
+/**
+ * TablePress DataTables FixedHeader CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables FixedHeader
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+.tablepress {
+	&.fixedHeader-floating,
+	&.fixedHeader-locked {
+		position: relative !important;
+		background-color: #ffffff;
+		margin-bottom: 0;
+
+		@media print {
+			display: none;
+		}
+	}
+}
+
+.dtfh-floatingparent.dtfh-floatingparent-head {
+	z-index: 999 !important;
+}

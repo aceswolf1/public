@@ -1,0 +1,131 @@
+/**
+ * TablePress DataTables Select CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables Select
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+// Load the Sass string module, for use in the `unicode` function.
+@use "sass:string";
+
+// Ensure that Unicode characters are embedded in ASCII-encoded form.
+@function unicode($str) {
+	@return string.unquote("\"") + string.unquote(string.insert($str, "\\", 1)) + string.unquote("\"");
+}
+
+table.dataTable {
+	// Cell and column selector access
+	> tbody > tr.selected { /* Attention: Possible DataTables CSS bug: .selected is a class on the tr!  */
+		background-color: rgba(13, 110, 253, 0.9);
+		color: #ffffff;
+	}
+
+	> tbody > tr > .dt-select {
+		text-align: center;
+		vertical-align: middle;
+	}
+
+	> thead > tr > .dt-select {
+		text-align: center;
+	}
+
+	input.dt-select-checkbox {
+		appearance: none;
+		position: relative;
+		display: inline-block;
+		width: 12px;
+		height: 12px;
+		border: 1px solid;
+		border-radius: 3px;
+		vertical-align: middle;
+		margin-top: 1px;
+		color: inherit;
+		font-size: 20px;
+		line-height: normal;
+
+		&:checked {
+			&:after {
+				display: block;
+				content: unicode("2713");
+
+				margin-top: -8px;
+			}
+		}
+
+		&:indeterminate {
+			&:after {
+				display: block;
+				position: absolute;
+				content: " ";
+				top: 3px;
+				left: 3px;
+				height: 4px;
+				width: 4px;
+				background-color: #000000;
+				border-radius: 2px;
+			}
+		}
+	}
+
+	> tbody > tr.selected { /* stylelint-disable-line no-duplicate-selectors */
+		input.dt-select-checkbox {
+			&:checked {
+				border: 1px solid;
+			}
+		}
+	}
+
+	// Legacy fake checkbox
+	> tbody > tr > td.select-checkbox,
+	> tbody > tr > th.select-checkbox {
+		position: relative;
+
+		&:before {
+			display: block;
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: 12px;
+			height: 12px;
+			box-sizing: border-box;
+			content: " ";
+			margin-top: -6px;
+			margin-left: -6px;
+			border: 1px solid;
+			border-radius: 3px;
+		}
+	}
+
+	> tbody > tr.selected { /* stylelint-disable-line no-duplicate-selectors */
+		> td.select-checkbox,
+		> th.select-checkbox {
+			&:before {
+				border: 1px solid;
+				content: unicode("2713");
+				font-size: 20px;
+
+				line-height: 6px;
+				text-align: center;
+			}
+		}
+	}
+}
+
+div.dt-container {
+	span.select-info,
+	span.select-item {
+		margin-left: 0.5em;
+	}
+}
+
+@media screen and (max-width: 640px) {
+	div.dt-container {
+		span.select-info,
+		span.select-item {
+			margin-left: 0;
+			display: block;
+		}
+	}
+}

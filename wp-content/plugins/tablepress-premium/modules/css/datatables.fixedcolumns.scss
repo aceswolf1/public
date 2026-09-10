@@ -1,0 +1,86 @@
+/**
+ * TablePress DataTables FixedColumns CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables FixedColumns
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+.tablepress.dataTable {
+	thead,
+	tfoot {
+		tr > .dtfc-fixed-start,
+		tr > .dtfc-fixed-end {
+			top: 0;
+			bottom: 0;
+			z-index: 3;
+		}
+	}
+
+	tbody {
+		tr > .dtfc-fixed-start,
+		tr > .dtfc-fixed-end {
+			z-index: 1;
+		}
+	}
+
+	tr > .dtfc-fixed-left:after,
+	tr > .dtfc-fixed-right:after {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 10px;
+		transition: box-shadow 0.3s;
+		content: "";
+		pointer-events: none;
+	}
+
+	tr > .dtfc-fixed-left:after {
+		right: 0;
+		transform: translateX(100%);
+	}
+
+	tr > .dtfc-fixed-right:after {
+		left: 0;
+		transform: translateX(-80%);
+	}
+
+	&.dtfc-scrolling-left {
+		tr > .dtfc-fixed-left:after {
+			box-shadow: inset 10px 0 8px -8px rgba(0, 0, 0, 0.2);
+		}
+	}
+
+	&.dtfc-scrolling-right {
+		tr > {
+			.dtfc-fixed-right:after {
+				box-shadow: inset -10px 0 8px -8px rgba(0, 0, 0, 0.2);
+			}
+
+			// Blockout the stacking.
+			.dtfc-fixed-right + .dtfc-fixed-right:after {
+				box-shadow: none;
+			}
+		}
+	}
+}
+
+/* Background color for the fixed columns, to prevent text from overlapping, with the lowest possible specificity. */
+:where(.tablepress.dataTable) tbody {
+	.dtfc-fixed-end,
+	.dtfc-fixed-start {
+		background-color: #ffffff;
+	}
+}
+
+div.dt-scroll,
+div.dtfh-floatingparent {
+	position: relative;
+
+	div.dtfc-top-blocker,
+	div.dtfc-bottom-blocker {
+		position: absolute;
+		background-color: #ffffff;
+	}
+}

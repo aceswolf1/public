@@ -1,0 +1,23 @@
+@use '../../assets/src/css/variables';
+
+// ============================================
+// Import CTA Card Styles (Shared Component)
+// ============================================
+@use '../../assets/src/css/cta-card';
+
+// ============================================
+// Video editor layout shell (new design).
+// Self-contained: does NOT use `_common.scss`.
+// ============================================
+@use 'editor-shell';
+@use 'skeleton';
+@use 'controls';
+@use 'layers';
+@use 'chapters';
+@use 'transcription';
+@use 'timeline';
+
+// Hide layer controls fallback when portal target is not available
+.layer-controls-fallback {
+	display: none;
+}

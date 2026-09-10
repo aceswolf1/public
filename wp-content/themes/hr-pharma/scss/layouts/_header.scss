@@ -1,0 +1,235 @@
+.header {
+
+	// this section includes the colored bar at the top
+	&__top {
+		align-items: flex-start;
+
+		&-left {		
+			align-items: center;	
+
+			h1.logo {					
+				margin: 20px 0;
+
+				a {
+					display: block;
+					width: 94px;
+					height: 51px;
+					background-image: url('../imgs/logo.png');
+					@include retina('../imgs/logo@2x.png', 94, 51);
+					background-repeat: no-repeat;
+					text-indent: 110%;
+					white-space: nowrap;
+					overflow: hidden;
+				}
+			}
+
+			h2.slogan {
+				color: #949494;
+				font-style: italic;
+				@include header_font();
+				font-size: 24px;
+				margin-left: 10px;
+				padding-left: 15px;
+				border-left: 1px solid #ccc;
+				line-height: 1.1;
+				cursor: default;
+			}
+		}
+
+		&-right {
+			align-items: center;
+
+			nav {
+				li {
+					&.simple-icon {
+						margin-right: .85em;
+						padding-right: 0;
+
+						span {    
+							width: 1.8rem;
+							height: 1.8rem;
+							display: flex;
+							align-items: center;
+							justify-content: center;
+
+							svg {
+								fill: #c6c6c6;
+								transition: fill 150ms;
+							}
+						}
+
+						&:hover {
+							svg {
+								fill: $primary;
+							}
+						}
+
+						@include mobile (680px) {
+							margin-top: 25px;
+						}
+					}
+
+					.cta {
+						margin-left: 8px;
+						// background: #e6e6e6;
+						background: $secondary;
+						color: #333333;
+						padding: 21px 30px 15px;
+						line-height: 1;
+						border-radius: 0 0 20px 20px;
+						transition: background 250ms, color 250ms, transform 250ms;
+						transform: translateY(-8px);
+
+						@include mobile (680px) {
+							display: none;
+						}
+
+						svg {
+							width: 17px;
+							margin-right: 10px;
+							fill: #404040;
+							transition: fill 250ms;
+						}
+
+						&__title {
+							font-weight: 400;
+							font-size: 16px;
+							margin-bottom: 2px;
+						}
+
+						&__description {
+							font-size: .8em;
+							@include header_font();
+							font-style: italic;
+							color: #a4a3a3;
+							color: #777;
+							font-family: 'Gentium Basic', serif;
+						}
+
+						&:hover {
+							// background: #1166b9;
+							background: darken($secondary, 9%);
+							// color: #fff;
+							transform: translateY(0);
+
+							svg {
+								// fill: #fff;
+							}
+
+							.cta__description {
+								// color: #bbb;
+							}
+						}
+					}
+
+					&.no-cta {
+						margin-top: 20px;
+					}
+				}
+
+				// @include mobile (500px) {
+				// 	display: none;
+				// }
+			}
+
+			.search-display {
+				margin-left: 2em;
+				color: rgba(#fff, .8);
+				transition: color 150ms;
+
+				&:hover {
+					color: #fff;
+				}
+			}
+		}
+	}
+
+	// this section includes the primary navigation
+	&__bottom {
+		@include blue_bg();
+
+		& > .flex {
+			align-items: center;
+
+			nav {
+				.menu-item {
+					margin-right: 2em;
+					position: relative;
+					font-size: 1.1em;
+
+					&__title {
+						color: #fff;
+						font-weight: 500;
+						line-height: 1;
+						margin-bottom: 3px;
+						transition: transform 250ms;
+						will-change: transform;
+					}
+
+					&__description {
+						color: #c7c7c7;
+						font-family: 'Gentium Basic', serif;
+						font-weight: 400;
+						font-style: italic;
+						font-size: .85em;
+						line-height: 1;
+						transition: transform 250ms;
+						will-change: transform;
+					}
+
+					a {
+						padding: 1.1em .5em;
+						font-weight: 600;
+						color: #111;
+
+						&:after {
+							content: '';
+							background: $secondary;
+							position: absolute;
+							height: 30px;
+							width: 4px;
+							top: 50%;
+							left: 0;
+							transform: translateY(-50%);
+							opacity: 0;
+							transition: opacity 250ms;
+						}
+
+						&:hover {
+							.menu-item__title,
+							.menu-item__description {
+								transform: translateX(5px);
+							}
+
+							&:after {
+								opacity: 1;
+							}
+						}
+					}
+				}
+
+				@include mobile ($display_slicknav_size) {
+					display: none;
+				}
+			}	
+
+			.search-display {
+				color: rgba(#ccc, .5);
+				transition: color 250ms;
+
+				&:hover {
+					color: $secondary;
+				}
+
+
+				@include mobile ($display_slicknav_size) {
+					display: none;
+				}
+			}		
+
+			@include mobile (650px) {
+				justify-content: center;
+			}
+		}
+	}
+}

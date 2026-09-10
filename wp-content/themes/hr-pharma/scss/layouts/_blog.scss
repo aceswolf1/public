@@ -1,0 +1,103 @@
+.content-wrapper > .flex {
+	@include mobile (950px) {
+		// display the sidebar widgets after the content
+		flex-direction: column-reverse;
+	}
+}
+
+.sidebar {
+	flex: 25% 0 0;
+	margin-right: 2em;
+
+	.widget {
+		margin-bottom: 2em;
+
+		&__title {
+			text-transform: uppercase;
+			font-weight: bold;
+			font-size: 1.2em;
+			color: $secondary;
+			margin-bottom: 0;
+		}
+
+		ul {
+			margin: 0 0 1em 0;
+			padding: 0;
+			list-style: none;
+
+			li {
+				padding: 1em 0;
+				border-bottom: 1px solid #ddd;
+
+				a {
+					text-decoration: none;
+				}
+
+				&:last-child {
+					border-bottom: none;
+				}
+			}
+		}
+	}
+}
+
+.article {
+	margin-bottom: 4em;
+	border-radius: 13px;
+	padding: 40px;
+	box-shadow: 3px 3px 10px rgba(#000, .1);
+
+	@include mobile (700px) {
+		padding: 20px;
+	}
+
+	&__title {
+		font-weight: bold;
+		margin-bottom: 0;
+		line-height: 1.2;
+		margin-bottom: .2em;
+		font-family: 'Roboto';
+
+		a {
+			text-decoration: none;
+		}
+	}
+
+	&__metadata {
+		margin-bottom: 1em;
+		font-size: .85em;
+		justify-content: flex-start;
+		color: #666;
+
+		& > div {
+			margin-right: 1em;
+		}
+	}
+
+	&__thumbnail {
+		display: block;
+		margin-bottom: 1em;
+	}
+
+	&__postmetadata {
+		border-top: 1px solid $secondary;
+		padding-top: 15px;
+		font-size: .85em;
+		color: #666;
+
+		a {
+			text-decoration: none;
+			color: inherit;
+
+			&:hover {
+				color: lighten($primary, 30%);
+			}
+		}
+
+		& > .flex {
+			& > div {
+				margin-right: 1em;
+			}
+		}
+	}
+}

@@ -1,0 +1,474 @@
+/* stylelint-disable scss/at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+// Initialize the variables for the settings page
+$settings-page-color-white: #fff;
+$settings-page-border: 1px solid #e0e0e0;
+$settings-page-breakpoint: 782px;
+
+#godam-settings {
+
+	.godam-settings-header-content {
+
+		@media (max-width: 420px) {
+			padding-left: 4px;
+			padding-right: 14px;
+		}
+	}
+
+	.components-button.has-icon.has-text {
+
+		@media (max-width: 640px) {
+			padding: .75rem 0.75rem;
+		}
+	}
+
+	.godam-settings {
+
+		&__hamburger-container {
+			position: sticky;
+			top: 60px;
+			z-index: 1000;
+			background: $settings-page-color-white;
+			border-radius: .75rem;
+			margin: 20px;
+			border: $settings-page-border;
+
+			@media (min-width: $settings-page-breakpoint) {
+				display: none;
+			}
+
+			@media (max-width: 600px) {
+				top: 10px;
+			}
+		}
+
+		&__hamburger {
+
+			&:hover {
+				background: #f0f0f0;
+			}
+
+			svg {
+				height: 30px;
+				width: 30px;
+				fill: #64748B;
+			}
+
+			@media (max-width: $settings-page-breakpoint) {
+				padding: 0 12px;
+				outline: none;
+				border-right: $settings-page-border;
+				font-size: 42px;
+				background: none;
+				cursor: pointer;
+			}
+		}
+
+		&__close-btn {
+			width: fit-content;
+			background: none;
+			border: $settings-page-border;
+			border-radius: 50%;
+			align-self: end;
+			cursor: pointer;
+			padding: 4px;
+			margin-bottom: 10px;
+			transition: all 0.3s ease;
+			display: none;
+
+			@media (max-width: $settings-page-breakpoint) {
+				display: flex;
+			}
+
+			&:hover {
+				background: #f0f0f0;
+			}
+		}
+
+		&__overlay {
+
+			@media (max-width: $settings-page-breakpoint) {
+				position: fixed;
+				inset: 0;
+				background-color: rgba(0, 0, 0, 0.4);
+				backdrop-filter: blur(3px);
+				z-index: 99999;
+			}
+		}
+
+		&-header {
+			background: #fff;
+		}
+
+		&-shadow {
+			box-shadow: 0 1px 4px rgba(18, 25, 97, .0779552);
+		}
+
+		&-label {
+			display: block;
+			font-size: 13px;
+			font-weight: 500;
+			line-height: 1.4;
+			margin-bottom: calc(4px * 2);
+			padding: 0;
+			text-transform: none;
+		}
+
+		&-help {
+			margin-top: calc(4px * 2);
+			margin-bottom: 0;
+			font-size: 12px;
+			font-style: normal;
+			color: #757575;
+		}
+
+		/**
+		 * Styes used for the tabs for the main settings page.
+		 */
+		&__container {
+			padding: 2rem 20px;
+			max-width: 1440px;
+			margin: 0 auto;
+			display: flex;
+			justify-content: space-between;
+			gap: 2em;
+			position: relative;
+			background-color: #f0f0f1;
+
+			@media (max-width: $settings-page-breakpoint) {
+				margin: 20px auto;
+			}
+
+			&__tabs {
+				margin-bottom: 2rem;
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+				min-width: 200px;
+
+				@media (max-width: $settings-page-breakpoint) {
+					position: fixed;
+					top: 0;
+					left: 0;
+					width: 270px;
+					height: 100vh;
+					background: $settings-page-color-white;
+					padding: 1rem;
+					box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+					transform: translateX(-120%);
+					overflow: auto;
+					transition: transform 0.3s ease-in-out;
+					z-index: 99999;
+
+					&.open {
+						transform: translateX(0);
+
+						&.is-safari {
+							transform: translateX(-10px);
+						}
+					}
+				}
+
+				nav {
+					display: flex;
+					flex-direction: column;
+					gap: 0.5rem;
+
+					a {
+						display: flex;
+						align-items: center;
+						gap: 0.5rem;
+						white-space: nowrap;
+						font-size: 0.875rem;
+						line-height: 1;
+						font-weight: 500;
+						color: rgba(119, 119, 119, 1);
+						padding: 0.5rem;
+						border-radius: 0.5rem;
+
+						&.active {
+							color: rgba(33, 33, 33, 1);
+							background-color: #fff;
+						}
+
+						&:focus {
+							box-shadow: none;
+						}
+					}
+				}
+			}
+
+			&__content {
+				flex: 1;
+				container-type: inline-size;
+				container-name: godamvideoplayer;
+			}
+
+			&__global-settings {
+				width: 90%;
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				gap: 3rem;
+				align-items: flex-start;
+
+				.godam-color-picker {
+					margin: 0;
+				}
+
+
+				@container godamvideoplayer (max-width: 732px) {
+					width: 100%;
+					gap: 1.5rem;
+					grid-template-columns: 1fr;
+				}
+			}
+
+			&__custom-css {
+				width: 80%;
+
+				.components-panel__body {
+					border: none;
+				}
+
+				@container godamvideoplayer (max-width: 732px) {
+					width: 100%;
+				}
+			}
+		}
+	}
+
+	.invalid-api-key {
+
+		input {
+			border-color: #fb2c36 !important;
+		}
+	}
+
+	span.invalid-api-key {
+		color: #fb2c36;
+	}
+
+	span.valid-api-key {
+		color: #15803d;
+	}
+
+	.godam-api-key-msg {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+
+		svg {
+			flex-shrink: 0;
+			fill: currentcolor;
+		}
+	}
+
+	.sidebar-nav-item {
+		
+		@apply flex items-center gap-2 p-2 mb-0.5 font-medium rounded-md text-gray-600 hover:text-gray-900 border border-transparent transition-all;
+
+		&.active {
+
+			@apply bg-white font-semibold text-gray-900 drop-shadow-sm;
+			border: 1px solid #ddd;
+		}
+
+		&:not(.active):hover {
+
+			@apply bg-gray-50;
+		}
+	}
+
+	// Circular progress bar
+	.circle-container {
+		position: relative;
+		width: 80px;
+		height: 80px;
+
+		.circle {
+			width: 80px;
+			height: 80px;
+			border-radius: 50%;
+			background: conic-gradient(var(--wp-components-color-accent, var(--wp-admin-theme-color, #3858e9)) var(--percentage), #e0e0e0 0);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 20px;
+			font-weight: 700;
+			color: #333;
+
+			&.red {
+				background: conic-gradient(#d14949 var(--percentage), #e0e0e0 0);
+			}
+		}
+
+		.data {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: 65px;
+			height: 65px;
+			border-radius: 1000px;
+			transform: translate(-50%, -50%);
+			background: #fff;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+		}
+	}
+
+	.premium-feature-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		z-index: 99;
+		background-color: rgb(255, 255, 255, 0.4);
+		border-radius: 0.25rem;
+
+		button {
+			box-shadow: 0 0 10px var(--wp-components-color-accent, #ab3a6d49);
+		}
+	}
+
+	/* Integration settings tabs */
+	.godam-settings-tabs {
+		display: inline-flex;
+		gap: 4px;
+		padding: 4px;
+		background: #f0f0f1;
+		border-radius: 10px;
+		margin-bottom: 9px;
+		flex-wrap: wrap;
+
+		.godam-settings-tab {
+			border: none;
+			background: transparent;
+			padding: 8px 14px;
+			font-size: 13px;
+			font-weight: 500;
+			border-radius: 8px;
+			cursor: pointer;
+			color: #1d2327;
+			transition: all 0.2s ease;
+			position: relative;
+			z-index: 1;
+
+			&:hover {
+				background: rgba(0, 0, 0, 0.05);
+			}
+
+			&.is-active {
+				background-color: var(
+					--wp-components-color-accent,
+					var(--wp-admin-theme-color, #3858e9)
+				);
+				color: #fff;
+				font-weight: 600;
+				box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+				transform: translateY(-1px);
+			}
+		}
+	}
+
+	/* Tab content wrapper */
+	.godam-tab-content {
+		position: relative;
+		margin-top: 16px;
+
+		.godam-tab-panel {
+			animation: godamFadeSlide 0.25s ease;
+		}
+	}
+
+	/* Button settings group */
+	.godam-button-settings-group {
+		background: #fff;
+		padding: 16px;
+		border-radius: 8px;
+		border: 1px solid #e5e7eb;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+	}
+
+	.godam-settings-section-title {
+		font-size: 14px;
+		font-weight: 600;
+		color: #1d2327;
+	}
+
+	/* Device tabs */
+	.godam-device-tabs {
+		display: inline-flex;
+		gap: 0;
+		padding: 6px;
+		background: #e5e7eb;
+		border-radius: 14px;
+		margin-bottom: 16px;
+
+		.godam-settings-tab {
+			min-width: 72px;
+			height: 40px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			border-radius: 10px;
+			background: transparent;
+			transition: all 0.25s ease;
+			padding: 0;
+
+			svg {
+				width: 18px;
+				height: 18px;
+				opacity: 0.7;
+				transition: all 0.25s ease;
+			}
+
+			&:hover {
+				background: rgba(0, 0, 0, 0.06);
+			}
+
+			&.is-active {
+				background-color: var(
+					--wp-components-color-accent,
+					var(--wp-admin-theme-color, #3858e9)
+				);
+				box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+				transform: translateY(-1px);
+
+				svg {
+					opacity: 1;
+					fill: #fff;
+					color: #fff;
+				}
+			}
+
+			&:focus {
+				box-shadow: none;
+				outline: none;
+			}
+		}
+	}
+
+	/* GoDAM notice message */
+	.godam-notice-message {
+		a {
+			text-decoration: underline;
+		}
+	}
+
+	/* Animation */
+	@keyframes godamFadeSlide {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+}

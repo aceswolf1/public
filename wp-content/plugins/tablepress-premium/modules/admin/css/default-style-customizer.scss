@@ -1,0 +1,87 @@
+/**
+ * CSS code for "Default Style Customizer" module on the "Plugin Options" screen.
+ *
+ * @package TablePress
+ * @subpackage Modules
+ * @author Tobias Bäthge
+ * @since 2.2.0
+ */
+
+/* Change cursor of the color indicator, to match the HEX color next to it. */
+.components-tab-panel__tab-content .component-color-indicator {
+	cursor: pointer;
+}
+
+/* Styling for the styling variation blocks. */
+.style-variation {
+	$color-active: var(--wp-admin-theme-color);
+	$color-inactive: #dcdcde;
+
+	width: 170px;
+
+	&-wrapper {
+		@media screen and (max-width: 1740px) {
+			max-width: 800px;
+		}
+	}
+
+	&-content {
+		padding: 8px 10px;
+	}
+
+	label {
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		box-sizing: border-box;
+		max-width: 100% !important;
+		margin-right: 0 !important;
+		height: 100%;
+		background: #ffffff;
+		border: 2px solid $color-inactive;
+		border-radius: 2px;
+		position: relative;
+
+		h3 {
+			margin: 0;
+		}
+	}
+
+	> input[type="radio"] {
+		position: absolute;
+		left: -9999px;
+		width: 0;
+		height: 0;
+		appearance: none;
+
+		+ label {
+			cursor: pointer;
+		}
+
+		&:checked + label {
+			border-color: $color-active;
+		}
+
+		&:focus + label,
+		+ label:hover {
+			border-color: $color-inactive;
+			box-shadow: 0 0 0 1px $color-inactive;
+			outline: 2px solid transparent;
+		}
+
+		&:checked:focus + label,
+		&:checked + label:hover {
+			border-color: $color-active;
+			box-shadow: 0 0 0 1px $color-active;
+			outline: 2px solid transparent;
+		}
+	}
+}
+
+/* Styling that is specific to the postbox. */
+#tablepress_options-default-style {
+	/* Adjust margin at the top of the "No JavaScript" error notice. */
+	.inside div.notice {
+		margin-top: 12px;
+	}
+}

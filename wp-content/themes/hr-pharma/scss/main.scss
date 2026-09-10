@@ -1,0 +1,62 @@
+// colors
+$primary: #005eb8; 		// blue
+$primary_light: #327ec6;// light blue (used for radial gradient backgrounds)
+$secondary: #c4d844; 	// lime green
+$tertiary: #666; 		// dark gray
+
+// partials
+@import 'partials/**/*.scss';
+
+// modules
+@import '../modules/**/*main.scss';
+
+
+body {
+	font-family: 'Roboto', sans-serif;
+	-webkit-font-smoothing: antialiased;
+	font-weight: 300;
+	overflow: hidden;
+}
+
+$grid: 1120px;
+$grid2: 940px;
+$display_slicknav_size: 1000px;
+
+.grid {
+	width: $grid;
+	margin: 0 auto;
+
+	@include mobile($grid) {
+		width: auto;
+		margin: 0 1em;
+	}
+
+	&--2 {
+		width: $grid2;
+		margin: 0 auto;
+
+		@include mobile($grid2) {
+			width: auto;
+			margin: 0 1em;
+		}
+	}
+}
+
+.slicknav_menu {
+	display: none;
+
+	@include mobile ($display_slicknav_size) {
+		display: block;
+	}
+}
+
+.footer-web {
+	display: none;
+}
+
+
+// layouts
+@import 'layouts/**/*.scss';
+
+// custom elements
+@import 'custom-elements/**/*.scss';

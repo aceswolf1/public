@@ -1,0 +1,32 @@
+/**
+ * TablePress DataTables Column Filter CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables Column Filter
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+.tablepress {
+	.individual-column-filter-row {
+		.dt-column-title,
+		.dt-column-order {
+			display: none;
+		}
+	}
+
+	.individual-column-filter {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 5px;
+		font-weight: bold;
+	}
+
+	select.individual-column-filter {
+		width: fit-content;
+
+		+ .dt-column-title {
+			display: none;
+		}
+	}
+}

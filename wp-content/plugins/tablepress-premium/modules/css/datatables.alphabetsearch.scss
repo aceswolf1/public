@@ -1,0 +1,47 @@
+/**
+ * TablePress DataTables AlphabetSearch CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables AlphabetSearch
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+.dt-container {
+	div.alphabet {
+		display: flex;
+		column-gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 0.5em;
+
+		span {
+			color: #3174c7;
+			cursor: pointer;
+
+			&:hover {
+				text-decoration: underline;
+			}
+
+			&.active {
+				color: #000000;
+			}
+
+			&.empty {
+				color: #ff0000;
+			}
+		}
+	}
+
+	div.alphabetInfo {
+		display: block;
+		position: absolute;
+		opacity: 0;
+		background-color: #111111;
+		color: #ffffff;
+		border-radius: 3px;
+		height: 1.6em;
+		padding: 0 8px;
+		text-align: center;
+		z-index: 1;
+	}
+}

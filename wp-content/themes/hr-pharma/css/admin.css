@@ -1,0 +1,8 @@
+/* Remove all annoying Elementor elements */
+.elementor-message,
+.e-overview__feed,
+.e-overview__footer,
+#menu-posts-elementor_library,
+tr[data-slug=elementor-pro] .active_license {
+	display: none;
+}

@@ -1,0 +1,167 @@
+@media screen and (max-width: 782px) {
+
+	.auto-fold .media-modal.wp-core-ui,
+	.media-modal-backdrop {
+		margin-left: 0 !important;
+	}
+}
+
+@media screen and (max-width: 960px) {
+
+	.auto-fold .media-modal.wp-core-ui,
+	.media-modal-backdrop {
+		margin-left: 36px;
+	}
+}
+
+.media-modal.wp-core-ui {
+	margin-left: 160px;
+	margin-top: var(--wp-admin--admin-bar--height, 32px);
+	z-index: 99;
+
+	.media-modal-content {
+		filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1));
+		box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+		border: 1px solid #dcdcde;
+		border-radius: 0.5rem;
+	}
+}
+
+.media-modal-backdrop {
+	margin-left: 160px;
+	margin-top: var(--wp-admin--admin-bar--height, 32px);
+	background-color: #fff;
+	z-index: 90 !important;
+}
+
+.folded .media-modal.wp-core-ui {
+	margin-left: 36px;
+}
+
+.folded .media-modal-backdrop {
+	margin-left: 36px;
+}
+
+#easydam-video-player {
+
+	margin: auto;
+	max-height: 500px;
+
+	.vjs-control-bar {
+		display: var(--is-controls-visible, flex);
+		z-index: 8;
+	}
+}
+
+.godam-link {
+	text-decoration: none;
+	color: var(--wp-admin-theme-color, #AB3A6C);
+
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
+.godam-collapsible-section {
+	border: 1px solid #e2e8f0;
+	border-radius: 0.75rem;
+	background: #fff;
+	overflow: hidden;
+
+	&__header {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.85rem 1rem;
+		border: 0;
+		background: #f8fafc;
+		color: #1e293b;
+		font-size: 0.85rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		transition: background-color 0.15s ease;
+
+		&:hover {
+			background: #f1f5f9;
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--wp-admin-theme-color, #ab3a6c);
+			outline-offset: -2px;
+		}
+
+		&.is-open {
+			border-bottom: 1px solid #e2e8f0;
+			background: #f1f5f9;
+		}
+	}
+
+	&__body {
+		padding: 1rem;
+	}
+}
+
+#root-video-editor {
+	height: 100%;
+	background-color: #fff;
+	display: flex;
+	flex-direction: column;
+
+	.godam-settings-header-content {
+
+		@media (max-width: 420px) {
+			padding-left: 4px;
+			padding-right: 14px;
+		}
+	}
+
+	.components-button.has-icon.has-text {
+
+		@media (max-width: 640px) {
+			padding: .75rem 0.75rem;
+		}
+	}
+
+	// Canvas wrapper for the single-video editor. Migrated from the now-removed
+	// attachment-picker.scss (the old list-view stylesheet) so it survives once
+	// that file is gone.
+	.video-canvas-wrapper {
+		max-width: 90%;
+
+		@media screen and (min-width: 1440px) {
+			max-width: 80%;
+		}
+	}
+}
+
+.godam-video-list__video__thumbnail__overlay__menu {
+
+	// stylelint-disable-next-line no-descending-specificity
+	.components-button.has-icon.has-text {
+		justify-content: flex-start !important;
+	}
+}
+
+.easydam-settings {
+
+	&-header {
+		background: #fff;
+	}
+}
+
+.disabled .components-combobox-control__suggestions-container {
+	pointer-events: none;
+	opacity: 0.5;
+}
+
+.jetpack-form-preview .wp-block-jetpack-contact-form-container,
+.forminator-ui {
+	pointer-events: none;
+}
+
+#branding-icon {
+	order: 9;
+}

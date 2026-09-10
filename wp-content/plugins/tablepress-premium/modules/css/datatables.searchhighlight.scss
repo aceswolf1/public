@@ -1,0 +1,21 @@
+/**
+ * TablePress DataTables SearchHighlight CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables SearchHighlight
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+table.dataTable {
+	span.highlight {
+		background-color: var(--searchhighlight-bg-color, #ffff88);
+		color: var(--searchhighlight-text-color, var(--text-color));
+		border-radius: 0.3rem;
+	}
+
+	span.column_highlight {
+		background-color: #ffcc99;
+		border-radius: 0.3rem;
+	}
+}

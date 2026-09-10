@@ -1,0 +1,11 @@
+/**
+ * TablePress Responsive Tables CSS for RTL languages.
+ *
+ * @package TablePress
+ * @subpackage Responsive Tables
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+/* TablePress Responsive Tables CSS for RTL. */
+@use "responsive-tables" with ($direction: "rtl");

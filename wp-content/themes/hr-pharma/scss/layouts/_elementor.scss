@@ -1,0 +1,264 @@
+#content {
+	.elementor-element {
+		&.hero {
+			color: #333;
+
+			.swiper-slide-inner {
+				width: $grid;
+				padding: 0;
+
+				@include mobile (700px) {
+					background: rgba(#fff,.4);
+					width: auto;
+				}
+			}
+
+			.elementor-element-populated {
+			    padding: 0;
+			}
+
+			.elementor-slide-heading {
+				color: #333;
+				font-size: 58px;
+				letter-spacing: -.03em;
+				@include header_font();
+				font-weight: normal;
+				line-height: 1.2em;
+				margin-bottom: 15px;
+
+				@include mobile (700px) {
+					font-size: 38px;
+				}
+			}
+
+			.elementor-slide-description {
+			    font-size: 1.2em;
+			    line-height: 1.5em;
+				color: #333;
+			}
+
+			.slick-slide {
+			    // height: 80vh;
+			    max-height: 700px;
+			}
+
+			.elementor-slide-button {
+			    border: 1px solid $secondary;
+			    background: $secondary;
+			    color: #fff;
+			    
+		    	&:hover {
+		    		background-color: darken($secondary, 12%);
+			    	border: 1px solid darken($secondary, 12%);	
+		    	}
+			}
+
+			.swiper-slide-bg {
+				@include mobile (1350px) {
+					background-size: cover;
+				}
+			}
+
+			.swiper-slide-contents {
+				@include mobile (1350px) {
+					margin: 0 20px;
+				}
+
+				@include mobile (700px) {
+					width: auto;
+					max-width: 100%;
+				}
+			}
+
+			.swiper-slide {
+				@include mobile (900px) {
+			    	height: 500px;
+				}
+				@include mobile (700px) {
+			    	height: 400px;
+				}
+			}
+
+			.swiper-pagination {
+				&-bullet {
+					$size: 16px;
+
+					width: $size;
+					height: $size;
+					border: 1px solid #fff;
+					background: transparent;
+					position: relative;
+					opacity: 1;
+
+					&:after {
+						$size: 10px;
+
+						width: $size;
+						height: $size;
+						content: '';
+						border-radius: 100%;
+						position: absolute;
+						background: $secondary;
+						top: 50%;
+						left: 50%;
+						transform: translateX(-50%) translateY(-50%);
+						opacity: 0;
+						transition: opacity 250ms;
+					}
+
+					&:before {
+						content: '';
+						width: 14px;
+						height: 1px;
+						background: #fff;
+						position: absolute;
+						left: 100%;
+						top: 50%;
+						transform: translateY(-50%);
+					}
+
+					&:last-child:before {
+						content: none;
+					}
+
+					&-active {
+						&:after {
+							opacity: 1;
+						}
+					}
+				}
+			}
+		}
+
+		.card .elementor-widget-wrap {
+			border-radius: 13px;
+			overflow: hidden;
+			padding: 0;
+			margin: 0px 20px;
+			box-shadow: 3px 3px 10px rgba(#000, .1);
+			transition: transform 200ms;
+			will-change: transition;
+
+			&:hover {
+				transform: scale(1.04);
+			}
+
+			h2 {
+				font-size: 24px;
+			}
+
+			& > .elementor-element:first-child {
+				margin-bottom: 30px;
+			}
+
+			& > .elementor-element:not(:first-child) {
+				margin-left: 35px;
+				margin-right: 35px;
+			}
+
+			a:not(.elementor-button) {
+				color: $secondary;
+				font-weight: 500;
+				font-size: .9em;
+
+				svg {
+					margin-left: 2px;
+					transition: transform 250ms;
+				}
+
+				&:hover svg {
+					transform: translateX(2px);
+				}
+			}
+
+			svg {
+				fill: $secondary;
+				color: $secondary;
+			}
+		}
+
+		&.contract-manufacturing > .elementor-container > .elementor-row > .elementor-column:last-child {
+			max-width: 720px;
+		}
+
+		&.blue {
+			@include blue_bg();
+			color: #fff;
+
+			.elementor-widget-icon-box {
+				.elementor-icon-box-wrapper {
+					display: flex;
+					align-items: center;
+				}
+				.elementor-icon svg {
+					color: $secondary;
+					width: .5em;
+				}
+
+				.elementor-icon-box-title {
+					font-family: 'Roboto', sans-serif;
+					font-size: 22px;
+					line-height: 1.3;
+					margin-bottom: 0;
+					font-weight: 400;
+				}
+			}
+		}
+
+		&.mobile-hide {
+			@include mobile (800px) {
+				display: none;
+			}
+		}
+	}
+
+	.elementor-button {
+	    font-size: .8em;
+	    font-weight: 500;
+	    text-transform: uppercase;
+	    padding: 14px 35px;
+	    border-radius: 15px;
+	    color: #333;
+	    fill: #333;
+	    background-color: transparent;
+	    border: 1px solid #333;
+
+	    &.cta {
+	    	background-color: $secondary;
+	    	border: 1px solid $secondary;
+
+	    	&:hover {
+	    		background-color: darken($secondary, 12%);
+		    	border: 1px solid darken($secondary, 12%);	
+	    	}
+	    }
+
+	    &:hover {
+	    	background: #333;
+	    	color: #fff;
+	    }
+	}
+
+	.cta .elementor-button {
+	    background-color: $secondary;
+	    border: 1px solid $secondary;	
+	    color: #fff;	
+
+    	&:hover {
+    		background-color: darken($secondary, 12%);
+	    	border: 1px solid darken($secondary, 12%);	
+    	}
+	}
+}
+
+// services page
+#content .elementor-icon-box-icon {
+	svg, i {
+		color: lighten($primary, 8%);
+		fill: lighten($primary, 8%);
+	}
+}
+
+.elementor-swiper-button {
+	color: hsla(0, 0%, 31%, 0.9) !important;
+}

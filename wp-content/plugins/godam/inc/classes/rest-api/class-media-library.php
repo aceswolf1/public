@@ -1,0 +1,2925 @@
+<?php
+/**
+ * REST API class for Media Library Pages.
+ *
+ * @package GoDAM
+ */
+
+namespace RTGODAM\Inc\REST_API;
+
+use RTGODAM\Inc\Media_Library\Media_Folder_Create_Zip;
+use RTGODAM\Inc\Media_Library_Ajax;
+use RTGODAM\Inc\Taxonomies\Media_Folders;
+use RTGODAM\Inc\Media_Library\Media_Folder_Utils;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Class Media_Library
+ */
+class Media_Library extends Base {
+
+	/**
+	 * REST route base.
+	 *
+	 * @var string
+	 */
+	protected $rest_base = 'media-library';
+
+	/**
+	 * Setup hooks.
+	 *
+	 * Adds the base REST-route registration plus a server-side guard that enforces
+	 * folder "locked" state on the NATIVE wp/v2/media-folder term endpoints (rename,
+	 * delete, re-parent, create-under). Locking was previously enforced only in React,
+	 * so a direct REST call could still mutate a locked folder.
+	 *
+	 * @return void
+	 */
+	protected function setup_hooks() {
+		parent::setup_hooks();
+
+		add_filter( 'rest_pre_dispatch', array( $this, 'enforce_locked_media_folder' ), 10, 3 );
+
+		// Background builder for folder-ZIP downloads (see download_folder()). Runs via
+		// Action Scheduler when available, otherwise WP-Cron — both invoke this hook.
+		add_action( 'godam_build_folder_zip', array( $this, 'run_folder_zip_job' ), 10, 1 );
+	}
+
+	/**
+	 * Reject mutating REST requests against locked media-folder terms.
+	 *
+	 * Runs before dispatch on the native taxonomy routes:
+	 *   - POST/PUT/PATCH /wp/v2/media-folder/{id}  → rename / re-parent an existing folder
+	 *   - DELETE         /wp/v2/media-folder/{id}  → delete an existing folder
+	 *   - POST           /wp/v2/media-folder       → create a folder (blocked only when the
+	 *                                                target parent is locked, i.e. populating it)
+	 * Reads (GET) are always allowed — locking protects against modification, not viewing.
+	 *
+	 * @param mixed            $result  Pre-dispatch result (non-null short-circuits the request).
+	 * @param \WP_REST_Server  $server  Server instance (unused).
+	 * @param \WP_REST_Request $request The request being dispatched.
+	 * @return mixed Original $result, or a 403 WP_Error when the target folder is locked.
+	 */
+	public function enforce_locked_media_folder( $result, $server, $request ) {
+		// Let an already short-circuited result (e.g. another plugin's error) stand.
+		if ( null !== $result ) {
+			return $result;
+		}
+
+		// Only guard the native media-folder collection or a single term.
+		if ( ! preg_match( '#^/wp/v2/media-folder(?:/(\d+))?$#', $request->get_route(), $matches ) ) {
+			return $result;
+		}
+
+		// Only mutating verbs.
+		if ( ! in_array( $request->get_method(), array( 'POST', 'PUT', 'PATCH', 'DELETE' ), true ) ) {
+			return $result;
+		}
+
+		$term_id = isset( $matches[1] ) ? (int) $matches[1] : 0;
+
+		// Renaming / re-parenting / deleting a locked folder (or a child of one). A
+		// bookmark toggle is a personal flag rather than a modification of the folder's
+		// protected content, so it is still allowed on a locked folder.
+		if ( $term_id > 0 && $this->is_folder_locked( $term_id ) && ! $this->is_bookmark_only_folder_update( $request, $term_id ) ) {
+			return new \WP_Error(
+				'godam_folder_locked',
+				__( 'This folder is locked and cannot be modified.', 'godam' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		// Creating or moving a folder INTO a locked destination (populating it).
+		if ( 'DELETE' !== $request->get_method() ) {
+			$new_parent = $request->get_param( 'parent' );
+
+			if ( ! is_null( $new_parent ) && (int) $new_parent > 0 && $this->is_folder_locked( (int) $new_parent ) ) {
+				return new \WP_Error(
+					'godam_folder_locked',
+					__( 'The destination folder is locked and cannot be modified.', 'godam' ),
+					array( 'status' => 403 )
+				);
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Whether a native media-folder update request only toggles the `bookmark` meta and
+	 * changes nothing else (name, slug, description, parent, or the `locked` meta itself).
+	 *
+	 * Bookmarking is a per-user convenience flag, not a modification of the folder's
+	 * protected content, so it stays allowed on a locked folder — but this must NOT become
+	 * a hole through which a locked folder is renamed, re-parented, or unlocked.
+	 *
+	 * @param \WP_REST_Request $request The request being dispatched.
+	 * @param int              $term_id The media-folder term id.
+	 * @return bool True if the request only changes the bookmark meta.
+	 */
+	private function is_bookmark_only_folder_update( $request, $term_id ) {
+		if ( 'DELETE' === $request->get_method() ) {
+			return false;
+		}
+
+		$term = get_term( $term_id, 'media-folder' );
+
+		if ( ! $term || is_wp_error( $term ) ) {
+			return false;
+		}
+
+		// Any change to the folder's own fields disqualifies it.
+		$name = $request->get_param( 'name' );
+		if ( ! is_null( $name ) && (string) $name !== (string) $term->name ) {
+			return false;
+		}
+
+		$slug = $request->get_param( 'slug' );
+		if ( ! is_null( $slug ) && (string) $slug !== (string) $term->slug ) {
+			return false;
+		}
+
+		$description = $request->get_param( 'description' );
+		if ( ! is_null( $description ) && (string) $description !== (string) $term->description ) {
+			return false;
+		}
+
+		$parent = $request->get_param( 'parent' );
+		if ( ! is_null( $parent ) && (int) $parent !== (int) $term->parent ) {
+			return false;
+		}
+
+		// The lock state itself must not change through this path (unlocking is a
+		// capability-gated operation handled by the bulk-lock endpoint).
+		$meta = $request->get_param( 'meta' );
+		if ( is_array( $meta ) && array_key_exists( 'locked', $meta ) ) {
+			$current_locked = get_term_meta( $term_id, 'locked', true );
+			$current_bool   = ( '1' === (string) $current_locked || 1 === $current_locked || true === $current_locked || 'true' === $current_locked );
+			$requested      = $meta['locked'];
+			$requested_bool = ( true === $requested || 1 === $requested || '1' === (string) $requested || 'true' === $requested );
+
+			if ( $current_bool !== $requested_bool ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Register custom REST API routes for Settings Pages.
+	 *
+	 * @return array Array of registered REST API routes
+	 */
+	public function get_rest_routes() {
+		return array(
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/assign-folder',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'assign_images_to_folder' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_ids' => array(
+							'required'    => true,
+							'type'        => 'array',
+							'items'       => array( 'type' => 'integer' ),
+							'description' => __( 'Array of attachment IDs to associate.', 'godam' ),
+						),
+						'folder_term_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'ID of the folder term to associate with the attachments.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/get-exif-data',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_exif_data' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'Attachment ID to get EXIF data for.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/set-video-thumbnail',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'set_video_thumbnail' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_id'             => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'Attachment ID to set video thumbnail for.', 'godam' ),
+						),
+						'thumbnail_url'             => array(
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'Attachment URL to set as the thumbnail.', 'godam' ),
+						),
+						'placeholder_thumbnail_url' => array(
+							'required'    => false,
+							'type'        => 'string',
+							'description' => __( 'Placeholder (low-quality blur-up) thumbnail URL for this thumbnail.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/get-video-thumbnail',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_video_thumbnails' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'Attachment ID to get video thumbnail for.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/upload-custom-video-thumbnail',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'upload_custom_video_thumbnail' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'Attachment ID to get video thumbnail for.', 'godam' ),
+						),
+						'thumbnail_url' => array(
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'URL of custom thumbnail.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/delete-custom-video-thumbnail',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'remove_custom_video_thumbnail' ),
+					'permission_callback' => function () {
+						return current_user_can( 'edit_posts' );
+					},
+					'args'                => array(
+						'attachment_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'Attachment ID to get video thumbnail for.', 'godam' ),
+						),
+						'thumbnail_url' => array(
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'Attachment URL of custom thumbnail.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/download-folder/(?P<folder_id>\d+)',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'download_folder' ),
+					// Requires upload_files (Author+): generating a ZIP aggregates an entire
+					// folder's media into a downloadable archive, so Contributors (edit_posts
+					// only) must not be able to trigger it.
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(
+						'folder_id' => array(
+							'required'    => true,
+							'type'        => 'integer',
+							'description' => __( 'ID of the folder to create a ZIP file for.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/download-folder-status/(?P<job_id>[A-Za-z0-9]+)',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_folder_zip_status' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(
+						'job_id' => array(
+							'required'    => true,
+							'type'        => 'string',
+							'description' => __( 'ID of the ZIP build job to poll.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/bulk-delete-folders',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'bulk_delete_folders' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(
+						'folder_ids' => array(
+							'required'    => true,
+							'type'        => 'array',
+							'items'       => array( 'type' => 'integer' ),
+							'description' => __( 'Array of folder IDs to delete.', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/bulk-lock-folders',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'bulk_update_folder_lock' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(
+						'folder_ids'    => array(
+							'required'    => true,
+							'type'        => 'array',
+							'items'       => array( 'type' => 'integer' ),
+							'description' => __( 'Array of folder IDs to update lock status for.', 'godam' ),
+						),
+						'locked_status' => array(
+							'required'    => true,
+							'type'        => 'boolean',
+							'description' => __( 'The desired lock status (true for locked, false for unlocked).', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/bulk-bookmark-folders',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'bulk_update_folder_bookmark' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(
+						'folder_ids'      => array(
+							'required'    => true,
+							'type'        => 'array',
+							'items'       => array( 'type' => 'integer' ),
+							'description' => __( 'Array of folder IDs to update bookmark status for.', 'godam' ),
+						),
+						'bookmark_status' => array(
+							'required'    => true,
+							'type'        => 'boolean',
+							'description' => __( 'The desired bookmark status (true for bookmarked, false for unbookmarked).', 'godam' ),
+						),
+					),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/get-godam-cmm-files',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_godam_cmm_files' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+					'args'                => array(),
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/create-media-entry',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'create_media_entry' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/attachment-by-id/(?P<id>[a-zA-Z0-9_-]+)',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_attachment_by_id' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/category-count/(?P<folder_id>\d+)',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_count_by_category' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/media-folders',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_media_folders' ),
+					'permission_callback' => function () {
+						return current_user_can( 'upload_files' );
+					},
+				),
+			),
+			array(
+				'namespace' => $this->namespace,
+				'route'     => '/' . $this->rest_base . '/generate-image-subsizes-callback',
+				'args'      => array(
+					'methods'             => \WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'generate_image_subsizes_callback' ),
+					'permission_callback' => array( $this, 'verify_callback_permission' ),
+				),
+			),
+		);
+	}
+
+	/**
+	 * Verify callback permission by checking API key.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param WP_REST_Request $request The request object.
+	 * @return bool|WP_Error True if permission granted, WP_Error otherwise.
+	 */
+	public function verify_callback_permission( $request ) {
+		$event = $request->get_param( 'event' );
+		$data  = $request->get_param( 'data' );
+
+		if ( empty( $data['api_key'] ) ) {
+			return new \WP_Error( 'api_key_required', __( 'API key is required.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		$provided_api_key = $data['api_key'];
+		$stored_api_key   = get_option( 'rtgodam-api-key' );
+
+		if ( ! hash_equals( $stored_api_key, $provided_api_key ) ) {
+			return new \WP_Error( 'forbidden', __( 'Invalid API key.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		if ( 'image_resize' !== $event ) {
+			return new \WP_Error( 'invalid_event', __( 'Invalid event.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Update image attachment meta with CDN subsizes.
+	 *
+	 * For virtual images, stores sizes in both `rtgodam_image_sizes` and
+	 * `_wp_attachment_metadata['sizes']`.
+	 *
+	 * For WordPress-uploaded images, stores GoDAM sizes only in
+	 * `rtgodam_image_sizes` and keeps `_wp_attachment_metadata['sizes']`
+	 * untouched.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param array $sizes         Array of sizes data.
+	 * @param int   $job_id        Job ID.
+	 * @param int   $attachment_id Attachment ID. Default to 0.
+	 *
+	 * @return bool True if successful, false otherwise.
+	 */
+	private function update_image_attachment_meta( $sizes, $job_id, $attachment_id = 0 ) {
+		if ( empty( $sizes ) || ! is_array( $sizes ) ) {
+			return false;
+		}
+
+		if ( empty( $attachment_id ) && empty( $job_id ) ) {
+			return false;
+		}
+
+		/**
+		 * Fires before resolving/mutating attachment data for this image
+		 * subsize update, so integrations that centralize media on another
+		 * site can switch context first. The job-ID fallback lookup below is
+		 * a direct $wpdb->postmeta query, just as site-scoped as
+		 * get_post_meta().
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->update_image_attachment_meta_after_lookup( $sizes, $job_id, $attachment_id );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Resolve the attachment ID (if not already known) and persist the
+	 * generated image subsizes to attachment meta.
+	 *
+	 * Split out of update_image_attachment_meta() so the wp-dam site-switch
+	 * bracket can wrap this entire body — including the job-ID fallback
+	 * lookup, which is itself a raw, site-scoped $wpdb->postmeta query.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param array $sizes         Array of sizes data.
+	 * @param int   $job_id        Job ID, used to resolve $attachment_id when it isn't already known.
+	 * @param int   $attachment_id Attachment ID, or 0/non-numeric to resolve via $job_id.
+	 *
+	 * @return bool True if successful, false otherwise.
+	 */
+	private function update_image_attachment_meta_after_lookup( $sizes, $job_id, $attachment_id ) {
+		if ( empty( $attachment_id ) || ! is_numeric( $attachment_id ) ) {
+			$attachment_id = rtgodam_get_post_id_by_meta_key_and_value( 'rtgodam_transcoding_job_id', $job_id );
+		}
+
+		$subsizes = array();
+		foreach ( $sizes as $size ) {
+			$subsizes[] = array(
+				'file'     => $size['url'],
+				'filesize' => $size['file_size'],
+				'width'    => $size['width'],
+				'height'   => $size['height'],
+			);
+		}
+
+		$attachment_meta = get_post_meta( $attachment_id, '_wp_attachment_metadata', true ); // godam-coverage-ignore -- update_image_attachment_meta_after_lookup(): covered transitively — caller (update_image_attachment_meta) wraps the entire call in try/finally.
+		$is_virtual      = ! empty( get_post_meta( $attachment_id, '_godam_original_id', true ) ); // godam-coverage-ignore -- update_image_attachment_meta_after_lookup(): covered transitively — caller (update_image_attachment_meta) wraps the entire call in try/finally.
+
+		// Normalize attachment meta to an array with a sizes key.
+		if ( ! is_array( $attachment_meta ) ) {
+			$attachment_meta = array();
+		}
+
+		$rtgodam_image_sizes = array();
+
+		if ( $is_virtual && ( empty( $attachment_meta['sizes'] ) || ! is_array( $attachment_meta['sizes'] ) ) ) {
+			$attachment_meta['sizes'] = array();
+		}
+
+		// Get all registered image sizes (core + theme/plugin-registered additional sizes).
+		$registered_sizes = wp_get_registered_image_subsizes();
+
+		// Build a lookup map for cropped sizes: exact W×H → [size_names].
+		$exact_map = array(); // "width:height" => array of size names (crop=true)
+		foreach ( $registered_sizes as $size_name => $size_data ) {
+			if ( $size_data['crop'] ) {
+				$key                 = $size_data['width'] . ':' . $size_data['height'];
+				$exact_map[ $key ][] = $size_name;
+			}
+		}
+
+		// Map each GoDAM-returned subsize to all matching registered size names.
+		foreach ( $subsizes as $size ) {
+			$sub_width  = (int) $size['width'];
+			$sub_height = (int) $size['height'];
+
+			// 1. Exact W×H match (always correct for cropped sizes).
+			$exact_key     = $sub_width . ':' . $sub_height;
+			$matched_names = isset( $exact_map[ $exact_key ] ) ? $exact_map[ $exact_key ] : array();
+
+			// 2. Bounding-box match for uncropped sizes.
+			// WordPress registered sizes are a max bounding box (width × height), and the
+			// generated size can be smaller when the opposite dimension's constraint is hit
+			// (e.g. a 300×300 max on a portrait image yields 150×300). Find the single
+			// best match — the smallest bounding box that still contains the subsize —
+			// and only map to multiple names when they share the exact same bounding box
+			// dimensions (true duplicates). Treat 0 as "unlimited" (effectively infinity).
+			if ( empty( $matched_names ) ) {
+				$best_eff_area = PHP_INT_MAX;
+				$best_reg_w    = -1;
+				$best_reg_h    = -1;
+				$candidates    = array();
+
+				foreach ( $registered_sizes as $reg_size_name => $reg_size_data ) {
+					// Only consider uncropped sizes — cropped sizes are handled via exact match above.
+					if ( ! empty( $reg_size_data['crop'] ) ) {
+						continue;
+					}
+
+					$reg_width  = (int) $reg_size_data['width'];
+					$reg_height = (int) $reg_size_data['height'];
+
+					$width_fits  = ( 0 === $reg_width ) || ( $sub_width <= $reg_width );
+					$height_fits = ( 0 === $reg_height ) || ( $sub_height <= $reg_height );
+
+					if ( ! $width_fits || ! $height_fits ) {
+						continue;
+					}
+
+					// Treat 0 (unlimited) as a very large value so specific dimensions are preferred.
+					$eff_w    = ( 0 === $reg_width ) ? PHP_INT_MAX : $reg_width;
+					$eff_h    = ( 0 === $reg_height ) ? PHP_INT_MAX : $reg_height;
+					$eff_area = (float) $eff_w * (float) $eff_h;
+
+					if ( $eff_area < $best_eff_area ) {
+						// New best match — smaller bounding box.
+						$best_eff_area = $eff_area;
+						$best_reg_w    = $reg_width;
+						$best_reg_h    = $reg_height;
+						$candidates    = array( $reg_size_name );
+					} elseif ( $eff_area === $best_eff_area && $reg_width === $best_reg_w && $reg_height === $best_reg_h ) {
+						// True duplicate — different size name, same bounding box dimensions.
+						$candidates[] = $reg_size_name;
+					}
+				}
+
+				$matched_names = $candidates;
+			}
+
+			if ( empty( $matched_names ) ) {
+				continue;
+			}
+
+			$file_basename = basename( $size['file'] );
+
+			foreach ( $matched_names as $external_size_name ) {
+				$rtgodam_image_sizes[ $external_size_name ] = array(
+					'url'      => esc_url_raw( $size['file'] ),
+					'file'     => $file_basename,
+					'filesize' => $size['filesize'],
+					'width'    => $size['width'],
+					'height'   => $size['height'],
+				);
+
+				// For virtual images, persist CDN sub-sizes in WordPress metadata too.
+				if ( $is_virtual ) {
+					$attachment_meta['sizes'][ $external_size_name ] = array(
+						'file'     => $file_basename,
+						'filesize' => $size['filesize'],
+						'width'    => $size['width'],
+						'height'   => $size['height'],
+					);
+				}
+			}
+		}
+
+		// Ensure top-level width/height exist for srcset calculation, fall back to the largest generated size.
+		if ( ( empty( $attachment_meta['width'] ) || empty( $attachment_meta['height'] ) ) && ! empty( $subsizes ) ) {
+			$largest = array_reduce(
+				$subsizes,
+				function ( $carry, $item ) {
+					if ( null === $carry ) {
+						return $item;
+					}
+					return ( $item['width'] > $carry['width'] ) ? $item : $carry;
+				},
+				null
+			);
+
+			if ( $largest ) {
+				$attachment_meta['width']  = (int) $largest['width'];
+				$attachment_meta['height'] = (int) $largest['height'];
+			}
+		}
+
+		// Backfill the "file" key so WordPress does not bail early while building srcset.
+		if ( empty( $attachment_meta['file'] ) ) {
+			$full_url = wp_get_attachment_url( $attachment_id ); // godam-coverage-ignore -- update_image_attachment_meta_after_lookup(): covered transitively — caller (update_image_attachment_meta) wraps the entire call in try/finally.
+			if ( $full_url ) {
+				$path                    = wp_parse_url( $full_url, PHP_URL_PATH );
+				$attachment_meta['file'] = ltrim( wp_basename( $path ), '/' );
+			}
+		}
+
+		update_post_meta( $attachment_id, '_wp_attachment_metadata', $attachment_meta ); // godam-coverage-ignore -- update_image_attachment_meta_after_lookup(): covered transitively — caller (update_image_attachment_meta) wraps the entire call in try/finally.
+		update_post_meta( $attachment_id, 'rtgodam_image_sizes', $rtgodam_image_sizes ); // godam-coverage-ignore -- update_image_attachment_meta_after_lookup(): covered transitively — caller (update_image_attachment_meta) wraps the entire call in try/finally.
+		return true;
+	}
+
+	/**
+	 * Request image subsizes generation from GoDAM for an image attachment.
+	 *
+	 * @since 1.7.0
+	 *
+	 * @param string $job_id        The GoDAM job ID.
+	 * @param int    $attachment_id The WordPress attachment ID.
+	 * @return bool True if request was successful, false otherwise.
+	 */
+	public function request_image_subsizes_for_attachment( $job_id, $attachment_id ) {
+		return $this->request_image_subsizes_from_godam( $job_id, $attachment_id );
+	}
+
+	/**
+	 * Generate image subsizes callback.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|WP_Error Success response or WP_Error on invalid event.
+	 *
+	 * @since 1.5.0
+	 */
+	public function generate_image_subsizes_callback( $request ) {
+		$data = $request->get_json_params();
+
+		if ( 'image_resize' !== $data['event'] ) {
+			return rest_ensure_response(
+				array(
+					'success' => false,
+					'message' => __( 'Invalid event.', 'godam' ),
+				)
+			);
+		}
+
+		$job_id = isset( $data['data']['job_id'] ) ? $data['data']['job_id'] : '';
+		$sizes  = isset( $data['data']['resized_images'] ) && is_array( $data['data']['resized_images'] ) ? $data['data']['resized_images'] : array();
+
+		if ( empty( $job_id ) || empty( $sizes ) ) {
+			return new \WP_Error( 'invalid_data', __( 'job_id and resized_images are required.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		$result = $this->update_image_attachment_meta( $sizes, $job_id );
+
+		if ( ! $result ) {
+			return new \WP_Error( 'update_failed', __( 'Failed to update attachment metadata.', 'godam' ), array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => __( 'Image subsizes successfully generated.', 'godam' ),
+			)
+		);
+	}
+
+	/**
+	 * Verify the API key using external API.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function assign_images_to_folder( $request ) {
+		$attachment_ids = $request->get_param( 'attachment_ids' );
+		$folder_term_id = $request->get_param( 'folder_term_id' );
+
+		// IDOR guard: this route is gated only by the broad `edit_posts` capability, which
+		// does NOT prove the caller may edit these specific objects. Before touching any
+		// terms — in either the assign or the remove-from-folder path — verify every ID is
+		// genuinely an attachment and that the current user can edit that object. Without
+		// this, a user could move (or strip folders from) media they do not own, and the
+		// remove path would act on raw IDs of arbitrary post types.
+		if ( empty( $attachment_ids ) || ! is_array( $attachment_ids ) ) {
+			return new \WP_Error( 'invalid_attachment', __( 'No attachment IDs provided.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		/**
+		 * Fires before resolving these attachments' post types and edit
+		 * capabilities, so integrations that centralize media on another
+		 * site can switch context first. Wraps the cache-priming calls
+		 * too, since they resolve this same site-scoped post/term data for
+		 * every ID in this request, and the loop below can return early
+		 * per-attachment.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			// Prime the post + object-term caches once so the per-id checks below don't each
+			// hit the database (a large drag-move otherwise fired hundreds of queries).
+			_prime_post_caches( $attachment_ids );
+			update_object_term_cache( $attachment_ids, 'attachment' );
+
+			foreach ( $attachment_ids as $attachment_id ) {
+				if ( 'attachment' !== get_post_type( $attachment_id ) ) {
+					return new \WP_Error( 'invalid_attachment', __( 'Invalid attachment ID.', 'godam' ), array( 'status' => 400 ) );
+				}
+
+				if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+					return new \WP_Error(
+						'rest_forbidden',
+						__( 'You are not allowed to modify one or more of these attachments.', 'godam' ),
+						array( 'status' => 403 )
+					);
+				}
+			}
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+
+		// Moving an attachment OUT of a locked folder empties that (protected) folder —
+		// whether by removing it (folder 0) or by re-assigning it to a different folder,
+		// since wp_set_object_terms() replaces the assignment. Reject if any attachment
+		// currently lives in a locked folder other than the destination.
+		foreach ( $attachment_ids as $attachment_id ) {
+			$current_folders = wp_get_object_terms( $attachment_id, 'media-folder', array( 'fields' => 'ids' ) );
+
+			if ( is_array( $current_folders ) ) {
+				foreach ( $current_folders as $current_folder_id ) {
+					if ( (int) $current_folder_id !== (int) $folder_term_id && $this->is_folder_locked( $current_folder_id ) ) {
+						return new \WP_Error(
+							'godam_folder_locked',
+							__( 'One or more attachments belong to a locked folder and cannot be moved.', 'godam' ),
+							array( 'status' => 403 )
+						);
+					}
+				}
+			}
+		}
+
+		// if folder id is 0, remove the folder from the attachments.
+		if ( 0 === $folder_term_id ) {
+			foreach ( $attachment_ids as $attachment_id ) {
+
+				$return = $this->remove_all_terms_from_id( $attachment_id, 'media-folder' );
+
+				if ( is_wp_error( $return ) ) {
+					return new \WP_Error( 'term_assignment_failed', __( 'Failed to remove folder from the attachments.', 'godam' ), array( 'status' => 500 ) );
+				}
+			}
+
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					'message' => __( 'Attachments successfully removed from the folder.', 'godam' ),
+				)
+			);
+		}
+
+		$term = get_term( $folder_term_id, 'media-folder' );
+
+		if ( ! $term || is_wp_error( $term ) ) {
+			return new \WP_Error( 'invalid_term', __( 'Invalid folder term ID.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Assigning attachments into a locked folder (or a child of one) populates it — reject.
+		if ( $this->is_folder_locked( $folder_term_id ) ) {
+			return new \WP_Error(
+				'godam_folder_locked',
+				__( 'This folder is locked and cannot be modified.', 'godam' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		foreach ( $attachment_ids as $attachment_id ) {
+			$return = wp_set_object_terms( $attachment_id, $folder_term_id, 'media-folder' );
+
+			if ( is_wp_error( $return ) ) {
+				return new \WP_Error( 'term_assignment_failed', __( 'Failed to associate attachments with the folder.', 'godam' ), array( 'status' => 500 ) );
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => __( 'Attachments successfully associated with the folder.', 'godam' ),
+			)
+		);
+	}
+
+	/**
+	 * Remove all terms of a specific taxonomy for a given post ID.
+	 *
+	 * @param int    $post_id   The ID of the post or object.
+	 * @param string $taxonomy  The taxonomy to remove terms from.
+	 *
+	 * @return bool|WP_ERROR True if terms are successfully removed, WP_Error otherwise.
+	 */
+	private function remove_all_terms_from_id( $post_id, $taxonomy ) {
+		if ( ! taxonomy_exists( $taxonomy ) ) {
+			return new \WP_Error( 'invalid_taxonomy', __( 'Invalid taxonomy.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Get all terms associated with the post ID for the taxonomy.
+		$terms = wp_get_object_terms( $post_id, $taxonomy, array( 'fields' => 'ids' ) );
+
+		if ( is_wp_error( $terms ) ) {
+			return $terms;
+		}
+
+		return wp_remove_object_terms( $post_id, $terms, $taxonomy );
+	}
+
+	/**
+	 * Get EXIF data.
+	 *
+	 * Get the EXIF data for the attachment ID.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function get_exif_data( $request ) {
+		$attachment_id = $request->get_param( 'attachment_id' );
+
+		/**
+		 * Fires before resolving this attachment's file path, so
+		 * integrations that centralize media on another site can switch
+		 * context first.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		// Get the file path of the image.
+		$file_path = get_attached_file( $attachment_id );
+		do_action( 'rtgodam_after_attachment_lookup' );
+
+		if ( ! file_exists( $file_path ) ) {
+			return new \WP_Error( 'image_not_found', __( 'Image file not found.', 'godam' ), array( 'status' => 404 ) );
+		}
+
+		// Read EXIF data from the image.
+		$exif_data = exif_read_data( $file_path, 0, true );
+
+		if ( false === $exif_data ) {
+			return new \WP_Error( 'exif_data_not_found', __( 'No EXIF data found.', 'godam' ), array( 'status' => 204 ) );
+		}
+
+		// Extract and filter the desired EXIF data fields.
+		$filtered_data = array();
+
+		if ( isset( $exif_data['EXIF']['DateTimeOriginal'] ) ) {
+			$filtered_data['DateTimeOriginal'] = $exif_data['EXIF']['DateTimeOriginal'];
+		}
+
+		if ( isset( $exif_data['IFD0']['Make'] ) ) {
+			$filtered_data['Make'] = $exif_data['IFD0']['Make'];
+		}
+
+		if ( isset( $exif_data['IFD0']['Model'] ) ) {
+			$filtered_data['Model'] = $exif_data['IFD0']['Model'];
+		}
+
+		if ( isset( $exif_data['EXIF']['ExposureTime'] ) ) {
+			$filtered_data['ExposureTime'] = $exif_data['EXIF']['ExposureTime'];
+		}
+
+		if ( isset( $exif_data['EXIF']['FNumber'] ) ) {
+			$filtered_data['FNumber'] = $this->format_fnumber( $exif_data['EXIF']['FNumber'] );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'data'    => $filtered_data,
+			)
+		);
+	}
+
+	/**
+	 * Format FNumber value.
+	 *
+	 * @param string|int $fnumber The FNumber value.
+	 * @return string Formatted FNumber value.
+	 */
+	private function format_fnumber( $fnumber ) {
+		if ( is_string( $fnumber ) && strpos( $fnumber, '/' ) !== false ) {
+			list( $numerator, $denominator ) = explode( '/', $fnumber );
+			if ( is_numeric( $numerator ) && is_numeric( $denominator ) && 0 !== $denominator ) {
+				return 'f/' . round( $numerator / $denominator, 1 );
+			}
+		}
+
+		return $fnumber;
+	}
+
+	/**
+	 * Get video thumbnails.
+	 *
+	 * Get the video thumbnail for the attachment ID.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function get_video_thumbnails( $request ) {
+		$attachment_id = $request->get_param( 'attachment_id' );
+
+		/**
+		 * Fires before reading/mutating this attachment's thumbnail data, so
+		 * integrations that centralize media on another site can switch
+		 * context first.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->get_video_thumbnails_after_lookup( $attachment_id );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Resolve and return this attachment's video thumbnail data.
+	 *
+	 * Split out of get_video_thumbnails() so the wp-dam site-switch bracket
+	 * can wrap this entire body.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function get_video_thumbnails_after_lookup( $attachment_id ) {
+		// Check if attachment is of type video.
+		$mime_type = get_post_mime_type( $attachment_id );
+
+		if ( ! preg_match( '/^video\//', $mime_type ) ) {
+			return new \WP_Error( 'invalid_attachment', __( 'Attachment is not a video.', 'godam' ), array( 'status' => 404 ) );
+		}
+
+		$thumbnail_array = get_post_meta( $attachment_id, 'rtgodam_media_thumbnails', true );
+
+		$godam_original_id = get_post_meta( $attachment_id, '_godam_original_id', true );
+
+		// Fetch thumbnails from CMM if its a virtual media.
+		if ( ! empty( $godam_original_id ) && empty( $thumbnail_array ) ) {
+			$api_key = get_option( 'rtgodam-api-key', '' );
+			$api_url = RTGODAM_API_BASE . '/api/method/godam_core.api.file.get_file';
+
+			// Prepare request body with file ID and API key.
+			$request_body = array(
+				'file_id' => $godam_original_id,
+				'api_key' => $api_key,
+			);
+
+			$args = array(
+				'body'    => wp_json_encode( $request_body ),
+				'headers' => array(
+					'Content-Type' => 'application/json',
+				),
+			);
+
+			// Use vip_safe_wp_remote_post as primary and wp_safe_remote_post as fallback.
+			if ( function_exists( 'vip_safe_wp_remote_post' ) ) {
+				$response = vip_safe_wp_remote_post( $api_url, $args, 3, 3 );
+			} else {
+				$response = wp_safe_remote_post( $api_url, $args );
+			}
+
+			if ( is_wp_error( $response ) ) {
+				return new \WP_Error( 'godam_api_error', __( 'Failed to fetch thumbnails from GoDAM.', 'godam' ), array( 'status' => 500 ) );
+			}
+
+			$response_code = wp_remote_retrieve_response_code( $response );
+			if ( 200 !== $response_code ) {
+				// translators: %s is the HTTP status code from the GoDAM API response.
+				return new \WP_Error( 'godam_api_error', sprintf( __( 'GoDAM API returned HTTP status: %s', 'godam' ), $response_code ), array( 'status' => $response_code ) );
+			}
+
+			$body = json_decode( wp_remote_retrieve_body( $response ) );
+			if ( is_null( $body ) ) {
+				return new \WP_Error( 'invalid_json', __( 'Invalid JSON response from GoDAM API.', 'godam' ), array( 'status' => 500 ) );
+			}
+
+			if ( ! is_object( $body ) ||
+				! isset( $body->message ) ||
+				! is_object( $body->message ) ||
+				empty( $body->message->thumbnails ) ||
+				! is_array( $body->message->thumbnails ) ) {
+				return new \WP_Error( 'thumbnails_not_found', __( 'No thumbnails found.', 'godam' ), array( 'status' => 204 ) );
+			}
+
+			// Extract thumbnail URLs and placeholder mapping from Frappe response objects.
+			$thumbnail_array        = array();
+			$frappe_placeholder_map = array();
+			foreach ( $body->message->thumbnails as $thumb_obj ) {
+				if ( isset( $thumb_obj->thumbnail_url ) ) {
+					$thumb_url         = $thumb_obj->thumbnail_url;
+					$thumbnail_array[] = $thumb_url;
+					if ( ! empty( $thumb_obj->placeholder_thumbnail ) ) {
+						$frappe_placeholder_map[ $thumb_url ] = $thumb_obj->placeholder_thumbnail;
+					}
+				}
+			}
+
+			$thumbnail_array = array_values( array_unique( $thumbnail_array ) );
+			if ( ! empty( $thumbnail_array ) ) {
+				update_post_meta( $attachment_id, 'rtgodam_media_thumbnails', $thumbnail_array );
+			}
+
+			if ( ! empty( $frappe_placeholder_map ) ) {
+				update_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails', $frappe_placeholder_map );
+			} else {
+				delete_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails' );
+			}
+
+			// Always sync the active placeholder thumbnail; clear it when there's no mapping.
+			$active_thumb_url = ! empty( $body->message->thumbnail_url ) ? $body->message->thumbnail_url : '';
+			if ( ! empty( $active_thumb_url ) && ! empty( $frappe_placeholder_map ) && isset( $frappe_placeholder_map[ $active_thumb_url ] ) ) {
+				update_post_meta( $attachment_id, 'rtgodam_media_video_placeholder_thumbnail', $frappe_placeholder_map[ $active_thumb_url ] );
+			} else {
+				delete_post_meta( $attachment_id, 'rtgodam_media_video_placeholder_thumbnail' );
+			}
+		}
+
+		$custom_thumbnails = get_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails', true );
+		$custom_thumbnails = rtgodam_convert_to_https_url( $custom_thumbnails );
+		$thumbnail_array   = rtgodam_convert_to_https_url( $thumbnail_array );
+
+		if ( ! is_array( $thumbnail_array ) ) {
+			return new \WP_Error( 'thumbnails_not_found', __( 'No thumbnails found.', 'godam' ), array( 'status' => 204 ) );
+		}
+
+		if ( function_exists( 'wp_get_upload_dir' ) ) {
+			$uploads = wp_get_upload_dir();
+		} else {
+			$uploads = wp_upload_dir();
+		}
+
+		foreach ( $thumbnail_array as $key => $thumbnail_src ) {
+				$file_url = $thumbnail_src;
+
+			if ( 0 === strpos( $file_url, $uploads['baseurl'] ) ||
+			0 === strpos( $file_url, 'http://' ) ||
+			0 === strpos( $file_url, 'https://' ) ) {
+				$thumbnail_src = $file_url;
+			} else {
+				$thumbnail_src = $uploads['baseurl'] . '/' . $file_url;
+			}
+			$thumbnail_array[ $key ] = $thumbnail_src;
+		}
+
+		// only filter for the unique values.
+		$thumbnail_array = array_unique( $thumbnail_array );
+
+		if ( is_array( $custom_thumbnails ) ) {
+			$custom_thumbnails = array_unique( $custom_thumbnails );
+		} else {
+			$custom_thumbnails = array();
+		}
+
+		$selected_thumbnail = get_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail', true );
+		$selected_thumbnail = rtgodam_convert_to_https_url( $selected_thumbnail );
+
+		// Ensure selected thumbnail is valid. Fallback if not in either array.
+		if (
+			empty( $selected_thumbnail )
+			|| (
+				! in_array( $selected_thumbnail, $thumbnail_array, true )
+				&& ! in_array( $selected_thumbnail, $custom_thumbnails, true )
+			)
+		) {
+			if ( ! empty( $custom_thumbnails ) ) {
+				$selected_thumbnail = reset( $custom_thumbnails );
+			} elseif ( ! empty( $thumbnail_array ) ) {
+				$selected_thumbnail = reset( $thumbnail_array );
+			}
+
+			update_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail', $selected_thumbnail );
+		}
+
+		if ( ! empty( $selected_thumbnail ) ) {
+					$file_url = $selected_thumbnail;
+
+			if ( 0 === strpos( $file_url, $uploads['baseurl'] ) ||
+			0 === strpos( $file_url, 'http://' ) ||
+			0 === strpos( $file_url, 'https://' ) ) {
+				$selected_thumbnail = $file_url;
+			} else {
+				$selected_thumbnail = $uploads['baseurl'] . '/' . $file_url;
+			}
+		}
+
+		$data = array();
+
+		if ( ! empty( $selected_thumbnail ) ) {
+			$data['selected'] = $selected_thumbnail;
+		}
+
+		$data['thumbnails'] = $thumbnail_array;
+
+		$data['customThumbnails'] = $custom_thumbnails;
+
+		$godam_placeholder_map = get_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails', true );
+		if ( is_array( $godam_placeholder_map ) ) {
+			$normalized_placeholder_map = array();
+			foreach ( $godam_placeholder_map as $placeholder_key => $placeholder_value ) {
+				$normalized_key                                = is_string( $placeholder_key ) ? rtgodam_convert_to_https_url( $placeholder_key ) : $placeholder_key;
+				$normalized_placeholder_map[ $normalized_key ] = is_string( $placeholder_value ) ? rtgodam_convert_to_https_url( $placeholder_value ) : $placeholder_value;
+			}
+			$data['placeholderThumbnails'] = $normalized_placeholder_map;
+		} else {
+			$data['placeholderThumbnails'] = array();
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'data'    => $data,
+			)
+		);
+	}
+
+	/**
+	 * Upload custom video thumbnail.
+	 *
+	 * Upload the custom video thumbnail for the thumbnail ID.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function upload_custom_video_thumbnail( $request ) {
+		$attachment_id = $request->get_param( 'attachment_id' );
+		$thumbnail_url = $request->get_param( 'thumbnail_url' );
+
+		/**
+		 * Fires before reading/mutating this attachment's thumbnail data, so
+		 * integrations that centralize media on another site can switch
+		 * context first.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->upload_custom_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Validate and persist a custom video thumbnail for an attachment.
+	 *
+	 * Split out of upload_custom_video_thumbnail() so the wp-dam site-switch
+	 * bracket can wrap this entire body.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param int    $attachment_id Attachment ID.
+	 * @param string $thumbnail_url Thumbnail URL.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function upload_custom_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url ) {
+		$mime_type = get_post_mime_type( $attachment_id );
+
+		if ( ! preg_match( '/^video\//', $mime_type ) ) {
+			return new \WP_Error( 'invalid_attachment', __( 'Attachment is not a video.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Get current thumbnails.
+		$existing_thumbnails = get_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails', true );
+
+		if ( ! is_array( $existing_thumbnails ) ) {
+			$existing_thumbnails = array();
+		}
+
+		// Prevent more than 3 thumbnails.
+		if ( count( $existing_thumbnails ) >= 3 && ! in_array( $thumbnail_url, $existing_thumbnails, true ) ) {
+			return new \WP_Error(
+				'thumbnail_limit_reached',
+				__( 'Only 3 custom thumbnails are allowed per video.', 'godam' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// Add new custom thumbnail at beginning and remove duplicates.
+		if ( ! in_array( $thumbnail_url, $existing_thumbnails, true ) ) {
+			array_unshift( $existing_thumbnails, $thumbnail_url );
+		}
+
+		// Save updated thumbnails.
+		update_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails', $existing_thumbnails );
+
+		// Also set as selected thumbnail.
+		update_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail', $thumbnail_url );
+
+		return new \WP_REST_Response(
+			array(
+				'success' => true,
+				'data'    => array(
+					'selected'         => $thumbnail_url,
+					'customThumbnails' => $existing_thumbnails,
+				),
+			),
+			200
+		);
+	}
+
+	/**
+	 * Remove video thumbnail.
+	 *
+	 * Remove the video thumbnail for the thumbnail URL.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function remove_custom_video_thumbnail( $request ) {
+		$attachment_id = $request->get_param( 'attachment_id' );
+		$thumbnail_url = $request->get_param( 'thumbnail_url' );
+
+		/**
+		 * Fires before reading/mutating this attachment's thumbnail data, so
+		 * integrations that centralize media on another site can switch
+		 * context first.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->remove_custom_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Validate and remove a custom video thumbnail from an attachment.
+	 *
+	 * Split out of remove_custom_video_thumbnail() so the wp-dam site-switch
+	 * bracket can wrap this entire body.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param int    $attachment_id Attachment ID.
+	 * @param string $thumbnail_url Thumbnail URL.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function remove_custom_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url ) {
+		$mime_type = get_post_mime_type( $attachment_id );
+
+		if ( ! preg_match( '/^video\//', $mime_type ) ) {
+			return new \WP_Error( 'invalid_attachment', __( 'Attachment is not a video.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Get current custom thumbnails.
+		$custom_thumbnails = get_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails', true );
+		$custom_thumbnails = rtgodam_convert_to_https_url( $custom_thumbnails );
+		$thumbnail_url     = rtgodam_convert_to_https_url( $thumbnail_url );
+
+		if ( ! is_array( $custom_thumbnails ) || ! in_array( $thumbnail_url, $custom_thumbnails, true ) ) {
+			return new \WP_Error( 'thumbnail_not_found', __( 'Custom thumbnail not found.', 'godam' ), array( 'status' => 404 ) );
+		}
+
+		// Remove the specified thumbnail.
+		$custom_thumbnails = array_diff( $custom_thumbnails, array( $thumbnail_url ) );
+
+		if ( empty( $custom_thumbnails ) ) {
+			delete_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails' );
+
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					'message' => __( 'Custom video thumbnail removed successfully.', 'godam' ),
+				)
+			);
+		}
+
+		update_post_meta( $attachment_id, 'rtgodam_custom_media_thumbnails', $custom_thumbnails );
+
+		$selected_thumbnail = get_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail', true );
+
+		if ( $selected_thumbnail === $thumbnail_url ) {
+			// If the removed thumbnail was the selected one, unset it.
+			delete_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail' );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => __( 'Custom video thumbnail removed successfully.', 'godam' ),
+			)
+		);
+	}
+
+	/**
+	 * Set video thumbnail.
+	 *
+	 * Set the video thumbnail for the attachment ID.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response
+	 */
+	public function set_video_thumbnail( $request ) {
+		$attachment_id             = $request->get_param( 'attachment_id' );
+		$thumbnail_url             = $request->get_param( 'thumbnail_url' );
+		$placeholder_thumbnail_url = $request->get_param( 'placeholder_thumbnail_url' );
+
+		/**
+		 * Fires before reading/mutating this attachment's thumbnail data, so
+		 * integrations that centralize media on another site can switch
+		 * context first.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->set_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url, $placeholder_thumbnail_url );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Validate and persist the selected video thumbnail for an attachment.
+	 *
+	 * Split out of set_video_thumbnail() so the wp-dam site-switch bracket
+	 * can wrap this entire body.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param int    $attachment_id             Attachment ID.
+	 * @param string $thumbnail_url             Thumbnail URL.
+	 * @param string $placeholder_thumbnail_url Optional placeholder thumbnail URL.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function set_video_thumbnail_after_lookup( $attachment_id, $thumbnail_url, $placeholder_thumbnail_url ) {
+		// Check if attachment is of type video.
+		$mime_type = get_post_mime_type( $attachment_id );
+
+		if ( ! preg_match( '/^video\//', $mime_type ) ) {
+			return new \WP_Error( 'invalid_attachment', __( 'Attachment is not a video.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Check if the thumbnail URL is valid.
+		if ( ! filter_var( $thumbnail_url, FILTER_VALIDATE_URL ) ) {
+			return new \WP_Error( 'invalid_thumbnail_url', __( 'Invalid thumbnail URL.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Validate optional placeholder URL if provided.
+		if ( ! empty( $placeholder_thumbnail_url ) && ! filter_var( $placeholder_thumbnail_url, FILTER_VALIDATE_URL ) ) {
+			return new \WP_Error( 'invalid_placeholder_thumbnail_url', __( 'Invalid placeholder thumbnail URL.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Update the video thumbnail.
+		update_post_meta( $attachment_id, 'rtgodam_media_video_thumbnail', $thumbnail_url );
+
+		// If a placeholder URL was explicitly supplied, store it and update the map.
+		if ( ! empty( $placeholder_thumbnail_url ) ) {
+			$godam_placeholder_map = get_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails', true );
+			if ( ! is_array( $godam_placeholder_map ) ) {
+				$godam_placeholder_map = array();
+			}
+			$godam_placeholder_map[ $thumbnail_url ] = esc_url_raw( $placeholder_thumbnail_url );
+			update_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails', $godam_placeholder_map );
+			update_post_meta( $attachment_id, 'rtgodam_media_video_placeholder_thumbnail', esc_url_raw( $placeholder_thumbnail_url ) );
+		} else {
+			// Sync the placeholder thumbnail based on the new selection from the existing map.
+			$godam_placeholder_map = get_post_meta( $attachment_id, 'rtgodam_media_placeholder_thumbnails', true );
+			if ( is_array( $godam_placeholder_map ) && isset( $godam_placeholder_map[ $thumbnail_url ] ) ) {
+				update_post_meta( $attachment_id, 'rtgodam_media_video_placeholder_thumbnail', esc_url_raw( $godam_placeholder_map[ $thumbnail_url ] ) );
+			} else {
+				// Custom/uploaded thumbnails have no placeholder – clear it.
+				delete_post_meta( $attachment_id, 'rtgodam_media_video_placeholder_thumbnail' );
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => __( 'Video thumbnail successfully set.', 'godam' ),
+			)
+		);
+	}
+
+	/**
+	 * Download folder as ZIP.
+	 *
+	 * Create a ZIP file of the folder with the given ID.
+	 *
+	 * @since 1.3.0
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function download_folder( $request ) {
+		$folder_id = $request->get_param( 'folder_id' );
+
+		if ( ! $folder_id || ! is_numeric( $folder_id ) ) {
+			return new \WP_Error( 'invalid_folder_id', __( 'Invalid folder ID.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Check if the term of the folder exists.
+		$term = get_term( $folder_id, 'media-folder' );
+
+		if ( ! $term || is_wp_error( $term ) ) {
+			return new \WP_Error( 'invalid_folder', __( 'Invalid folder term ID.', 'godam' ), array( 'status' => 404 ) );
+		}
+
+		// The archive is built asynchronously. Building it in-request meant a folder with
+		// many/large files (batches of 50, files up to 500 MB) could exceed the PHP/web
+		// server time limit and fail the request. Instead we register a job, kick off a
+		// background build, and hand the client a job id to poll (get_folder_zip_status()).
+		$job_id = wp_generate_password( 32, false );
+
+		$job = array(
+			'status'    => 'queued',
+			'folder_id' => (int) $folder_id,
+			'user_id'   => get_current_user_id(),
+			'zip_url'   => '',
+			'zip_name'  => '',
+			'message'   => '',
+			'created'   => time(),
+			'updated'   => time(),
+		);
+
+		set_transient( $this->zip_job_transient_key( $job_id ), $job, HOUR_IN_SECONDS );
+
+		// Prefer Action Scheduler (bundled with WooCommerce and many plugins) for reliable
+		// async execution; fall back to WP-Cron nudged with spawn_cron(). Both paths invoke
+		// the `godam_build_folder_zip` hook with the job id (see setup_hooks()).
+		if ( function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action( 'godam_build_folder_zip', array( $job_id ), 'godam' );
+		} else {
+			wp_schedule_single_event( time(), 'godam_build_folder_zip', array( $job_id ) );
+
+			if ( function_exists( 'spawn_cron' ) ) {
+				spawn_cron();
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => __( 'Preparing ZIP file…', 'godam' ),
+				'data'    => array(
+					'job_id' => $job_id,
+					'status' => 'queued',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Transient key for a folder-ZIP build job.
+	 *
+	 * @param string $job_id Job identifier.
+	 * @return string Transient key.
+	 */
+	private function zip_job_transient_key( $job_id ) {
+		return 'godam_zip_job_' . $job_id;
+	}
+
+	/**
+	 * Background handler that builds a folder's ZIP and records the outcome on the job.
+	 *
+	 * Invoked via `godam_build_folder_zip` (Action Scheduler or WP-Cron). The client
+	 * discovers success/failure by polling get_folder_zip_status().
+	 *
+	 * @param string $job_id Job identifier.
+	 * @return void
+	 */
+	public function run_folder_zip_job( $job_id ) {
+		$key = $this->zip_job_transient_key( $job_id );
+		$job = get_transient( $key );
+
+		if ( ! is_array( $job ) ) {
+			return; // Unknown or expired job.
+		}
+
+		$job['status']  = 'processing';
+		$job['updated'] = time();
+		set_transient( $key, $job, HOUR_IN_SECONDS );
+
+		$folder_id = isset( $job['folder_id'] ) ? (int) $job['folder_id'] : 0;
+		$term      = $folder_id ? get_term( $folder_id, 'media-folder' ) : null;
+
+		if ( ! $term || is_wp_error( $term ) ) {
+			$job['status']  = 'failed';
+			$job['message'] = __( 'Invalid folder term ID.', 'godam' );
+			$job['updated'] = time();
+			set_transient( $key, $job, HOUR_IN_SECONDS );
+			return;
+		}
+
+		// Unguessable filename (see the ZIP hardening in Media_Folder_Create_Zip).
+		$zip_name = 'media-folder-' . $term->slug . '-' . wp_generate_password( 20, false ) . '.zip';
+		$result   = Media_Folder_Create_Zip::get_instance()->create_zip( $folder_id, $zip_name );
+
+		if ( is_wp_error( $result ) ) {
+			$job['status']  = 'failed';
+			$job['message'] = $result->get_error_message();
+		} else {
+			$job['status']   = 'completed';
+			$job['zip_url']  = isset( $result['zip_url'] ) ? $result['zip_url'] : '';
+			$job['zip_name'] = isset( $result['zip_name'] ) ? $result['zip_name'] : $zip_name;
+			$job['message']  = isset( $result['message'] ) ? $result['message'] : __( 'ZIP file created successfully.', 'godam' );
+		}
+
+		$job['updated'] = time();
+		set_transient( $key, $job, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * Poll the status of a folder-ZIP build job.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function get_folder_zip_status( $request ) {
+		$job_id = (string) $request->get_param( 'job_id' );
+		$job    = get_transient( $this->zip_job_transient_key( $job_id ) );
+
+		if ( ! is_array( $job ) ) {
+			return new \WP_Error( 'invalid_job', __( 'Unknown or expired download job.', 'godam' ), array( 'status' => 404 ) );
+		}
+
+		// A job may only be polled by the user who started it (admins excepted), so one
+		// user cannot read another's generated ZIP URL.
+		if ( isset( $job['user_id'] ) && get_current_user_id() !== (int) $job['user_id'] && ! current_user_can( 'manage_options' ) ) {
+			return new \WP_Error( 'rest_forbidden', __( 'You are not allowed to access this download job.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'data'    => array(
+					'status'   => isset( $job['status'] ) ? $job['status'] : 'queued',
+					'zip_url'  => isset( $job['zip_url'] ) ? $job['zip_url'] : '',
+					'zip_name' => isset( $job['zip_name'] ) ? $job['zip_name'] : '',
+					'message'  => isset( $job['message'] ) ? $job['message'] : '',
+				),
+			)
+		);
+	}
+
+	/**
+	 * Delete multiple folders.
+	 *
+	 * Deletes an array of folder IDs.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function bulk_delete_folders( $request ) {
+		$user            = wp_get_current_user();
+		$is_allowed_role = ( $user instanceof \WP_User ) && in_array( 'administrator', $user->roles, true );
+		$is_superadmin   = is_multisite() && is_super_admin( $user->ID ) && current_user_can( 'manage_network' );
+
+		if ( ! $is_allowed_role && ! $is_superadmin ) {
+			return new \WP_Error( 'rest_forbidden', __( 'You do not have permission to delete folders.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		$folder_ids = $request->get_param( 'folder_ids' );
+
+		if ( empty( $folder_ids ) || ! is_array( $folder_ids ) ) {
+			return new \WP_Error( 'invalid_ids', __( 'No folder IDs provided or invalid format.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Reject the whole request if any target is locked (or a child of a locked folder),
+		// so a direct API call can't delete a protected folder — and we never partially delete.
+		foreach ( $folder_ids as $folder_id ) {
+			if ( is_numeric( $folder_id ) && (int) $folder_id > 0 && $this->is_folder_locked( $folder_id ) ) {
+				return new \WP_Error(
+					'godam_folder_locked',
+					__( 'One or more selected folders are locked and cannot be deleted.', 'godam' ),
+					array( 'status' => 403 )
+				);
+			}
+		}
+
+		$deleted_count = 0;
+		$errors        = array();
+
+		foreach ( $folder_ids as $folder_id ) {
+			if ( ! is_numeric( $folder_id ) || $folder_id <= 0 ) {
+				// translators: %s is the invalid folder ID.
+				$errors[] = sprintf( __( 'Invalid folder ID: %s', 'godam' ), $folder_id );
+				continue;
+			}
+
+			$term = get_term( $folder_id, 'media-folder' );
+
+			if ( ! $term || is_wp_error( $term ) ) {
+				// translators: %s is the invalid folder ID.
+				$errors[] = sprintf( __( 'Folder ID %s not found or invalid.', 'godam' ), $folder_id );
+				continue;
+			}
+
+			$result = wp_delete_term( $folder_id, 'media-folder' );
+
+			if ( is_wp_error( $result ) ) {
+				// translators: %s is the invalid folder ID where delete failed.
+				$errors[] = sprintf( __( 'Failed to delete folder %s', 'godam' ), $folder_id );
+			} elseif ( false === $result ) {
+				// translators: %s is the ID of folder not found.
+				$errors[] = sprintf( __( 'Folder ID %s not found during deletion attempt.', 'godam' ), $folder_id );
+			} elseif ( 0 === $result ) {
+				// translators: %s is the invalid folder ID.
+				$errors[] = sprintf( __( 'Folder ID %s cannot be deleted (possibly uncategorized or default term).', 'godam' ), $folder_id );
+			} else {
+				++$deleted_count;
+			}
+		}
+
+		if ( $deleted_count > 0 && empty( $errors ) ) {
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					// translators: %d is the number of folders deleted.
+					'message' => sprintf( __( '%d folder(s) deleted successfully.', 'godam' ), $deleted_count ),
+				)
+			);
+		} elseif ( $deleted_count > 0 && ! empty( $errors ) ) {
+			return new \WP_REST_Response(
+				array(
+					'success'       => true, // Partial success
+					// translators: %1$d is the number of folders deleted, %2$s are the errors.
+					'message'       => sprintf( __( 'Error deleting some folders. Deleted: %1$d. Errors: %2$s', 'godam' ), $deleted_count, implode( ', ', $errors ) ),
+					'errors'        => $errors,
+					'deleted_count' => $deleted_count,
+				),
+				200 // HTTP OK for partial success.
+			);
+		} else {
+			return new \WP_Error( 'bulk_delete_failed', __( 'No folders were deleted.', 'godam' ) . ' Errors: ' . implode( ', ', $errors ), array( 'status' => 500 ) );
+		}
+	}
+
+	/**
+	 * Whether a media-folder term is locked, directly or through an ancestor.
+	 *
+	 * Folder locking is protective: a locked folder shields itself AND all of its
+	 * descendants from mutation. So a folder counts as locked if its own `locked`
+	 * term-meta is truthy or if any of its ancestors' is. Client-side gating (React)
+	 * is UX only; this is the authoritative server-side check.
+	 *
+	 * @param int $term_id Media-folder term ID.
+	 * @return bool True if the folder or one of its ancestors is locked.
+	 */
+	private function is_folder_locked( $term_id ) {
+		$term_id = (int) $term_id;
+
+		if ( $term_id <= 0 ) {
+			return false;
+		}
+
+		// The term itself plus every ancestor — a locked ancestor locks the branch.
+		$ids       = array( $term_id );
+		$ancestors = get_ancestors( $term_id, 'media-folder', 'taxonomy' );
+
+		if ( is_array( $ancestors ) ) {
+			$ids = array_merge( $ids, $ancestors );
+		}
+
+		foreach ( $ids as $id ) {
+			$locked_raw = get_term_meta( $id, 'locked', true );
+
+			if ( '1' === $locked_raw || 1 === $locked_raw || true === $locked_raw || 'true' === $locked_raw ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Update meta status for multiple folders.
+	 * This is a helper method used by bulk_update_folder_lock_status and bulk_update_folder_bookmark_status.
+	 *
+	 * @param array  $folder_ids Array of folder IDs.
+	 * @param string $meta_key   The meta key to update ('locked' or 'bookmark').
+	 * @param bool   $value      The boolean value to set (true or false).
+	 * @return array Success status and messages.
+	 */
+	private function update_folder_meta_status( $folder_ids, $meta_key, $value ) {
+		$updated_count = 0;
+		$failed_ids    = array();
+		$errors        = array();
+
+		foreach ( $folder_ids as $folder_id ) {
+			if ( ! is_numeric( $folder_id ) || $folder_id <= 0 ) {
+				// translators: %s is the invalid folder ID.
+				$errors[] = sprintf( __( 'Invalid folder ID: %s', 'godam' ), $folder_id );
+				continue;
+			}
+
+			$term = get_term( $folder_id, 'media-folder' );
+
+			if ( ! $term || is_wp_error( $term ) ) {
+				// translators: %s is the invalid folder ID.
+				$errors[] = sprintf( __( 'Folder ID %s not found or invalid.', 'godam' ), $folder_id );
+				continue;
+			}
+
+			// update_term_meta() returns false BOTH on a genuine failure and when the value
+			// is already what we're setting. Treat "already at the desired value" as success
+			// (a no-op), so re-locking an already-locked folder isn't a "failure"; only a real
+			// write failure (value differs but the update returned false) is recorded.
+			$current = get_term_meta( $folder_id, $meta_key, true );
+
+			if ( (string) $current === (string) $value ) {
+				++$updated_count;
+				continue;
+			}
+
+			$result = update_term_meta( $folder_id, $meta_key, $value );
+
+			if ( false === $result ) {
+				$failed_ids[] = $folder_id;
+				// translators: %s is the folder ID whose meta update failed.
+				$errors[] = sprintf( __( 'Failed to update folder %s.', 'godam' ), $folder_id );
+			} else {
+				++$updated_count;
+			}
+		}
+
+		return array(
+			'updated_count' => $updated_count,
+			'failed_ids'    => $failed_ids,
+			'errors'        => $errors,
+		);
+	}
+
+	/**
+	 * Bulk update folder lock status.
+	 *
+	 * Sets the 'locked' meta status for an array of folder IDs.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function bulk_update_folder_lock( $request ) {
+		$user            = wp_get_current_user();
+		$is_allowed_role = ( $user instanceof \WP_User ) && array_intersect( array( 'administrator', 'editor' ), $user->roles );
+		$is_superadmin   = is_multisite() && is_super_admin( $user->ID ) && current_user_can( 'manage_network' );
+
+		if ( ! $is_allowed_role && ! $is_superadmin ) {
+			return new \WP_Error( 'rest_forbidden', __( 'You do not have permission to lock or unlock folders.', 'godam' ), array( 'status' => 403 ) );
+		}
+
+		$folder_ids    = $request->get_param( 'folder_ids' );
+		$locked_status = (bool) $request->get_param( 'locked_status' );
+
+		if ( empty( $folder_ids ) || ! is_array( $folder_ids ) ) {
+			return new \WP_Error( 'invalid_ids', __( 'No folder IDs provided or invalid format.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		$result = $this->update_folder_meta_status( $folder_ids, 'locked', $locked_status );
+
+		if ( $result['updated_count'] > 0 && empty( $result['errors'] ) ) {
+			return rest_ensure_response(
+				array(
+					'success'       => true,
+					'message'       => sprintf(
+						$locked_status
+						// translators: %d number of folders.
+							? __( '%d folder(s) locked successfully.', 'godam' )
+							// translators: %d number of folders.
+							: __( '%d folder(s) unlocked successfully.', 'godam' ),
+						$result['updated_count']
+					),
+					'updated_ids'   => $folder_ids,
+					'locked_status' => $locked_status,
+				)
+			);
+		} elseif ( $result['updated_count'] > 0 && ! empty( $result['errors'] ) ) {
+			return new \WP_REST_Response(
+				array(
+					'success'       => true, // Partial success.
+					'message'       => sprintf(
+						$locked_status
+						// translators: %d number of folders.
+							? __( 'Some folders locked, but issues occurred with others. Locked: %d.', 'godam' )
+							// translators: %d number of folders.
+							: __( 'Some folders unlocked, but issues occurred with others. Unlocked: %d.', 'godam' ),
+						$result['updated_count']
+					),
+					'errors'        => $result['errors'],
+					'updated_count' => $result['updated_count'],
+					'updated_ids'   => array_diff( $folder_ids, $result['failed_ids'] ),
+					'locked_status' => $locked_status,
+				),
+				200
+			);
+		} else {
+			return new \WP_Error( 'bulk_lock_failed', __( 'No folders were updated for lock status.', 'godam' ) . ' Errors: ' . implode( ', ', $result['errors'] ), array( 'status' => 500 ) );
+		}
+	}
+
+	/**
+	 * Bulk update folder bookmark status.
+	 *
+	 * Sets the 'bookmark' meta status for an array of folder IDs.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function bulk_update_folder_bookmark( $request ) {
+		$folder_ids      = $request->get_param( 'folder_ids' );
+		$bookmark_status = (bool) $request->get_param( 'bookmark_status' );
+
+		if ( empty( $folder_ids ) || ! is_array( $folder_ids ) ) {
+			return new \WP_Error( 'invalid_ids', __( 'No folder IDs provided or invalid format.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		$result = $this->update_folder_meta_status( $folder_ids, 'bookmark', $bookmark_status );
+
+		if ( $result['updated_count'] > 0 && empty( $result['errors'] ) ) {
+			return rest_ensure_response(
+				array(
+					'success'         => true,
+					'message'         => sprintf(
+						$bookmark_status
+						// translators: %d number of folders.
+							? __( '%d folder(s) bookmarked successfully.', 'godam' )
+							// translators: %d number of folders.
+							: __( '%d folder(s) unbookmarked successfully.', 'godam' ),
+						$result['updated_count']
+					),
+					'updated_ids'     => $folder_ids,
+					'bookmark_status' => $bookmark_status,
+				)
+			);
+		} elseif ( $result['updated_count'] > 0 && ! empty( $result['errors'] ) ) {
+			return new \WP_REST_Response(
+				array(
+					'success'         => true, // Partial success.
+					'message'         => sprintf(
+						$bookmark_status
+						// translators: %d number of folders.
+							? __( 'Some folders bookmarked, but issues occurred with others. Bookmarked: %d.', 'godam' )
+							// translators: %d number of folders.
+							: __( 'Some folders unbookmarked, but issues occurred with others. Unbookmarked: %d.', 'godam' ),
+						$result['updated_count'],
+					),
+					'errors'          => $result['errors'],
+					'updated_count'   => $result['updated_count'],
+					'updated_ids'     => array_diff( $folder_ids, $result['failed_ids'] ),
+					'bookmark_status' => $bookmark_status,
+				),
+				200
+			);
+		} else {
+			return new \WP_Error( 'bulk_bookmark_failed', __( 'No folders were updated for bookmark status.', 'godam' ) . ' Errors: ' . implode( ', ', $result['errors'] ), array( 'status' => 500 ) );
+		}
+	}
+
+	/**
+	 * Handles a REST API request to fetch media files from GoDAM CMM.
+	 *
+	 * This endpoint retrieves a list of media files (video, audio, etc.) from the GoDAM API
+	 * using an API key stored in WordPress options. The response is paginated based on
+	 * `page` and `per_page` parameters. The media type can be filtered using the `type` parameter.
+	 *
+	 * Supported types: 'video', 'audio', 'image', etc.
+	 * For 'video' type, the job type is sent as 'stream' to the external API.
+	 *
+	 * The returned response contains the processed list of media items with additional meta
+	 * fields (like artist and album for audio), total count, and pagination information.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response JSON-formatted response containing:
+	 */
+	public function get_godam_cmm_files( $request ) {
+		// Extract and sanitize pagination and filter parameters from the request.
+		$page     = max( 1, absint( $request->get_param( 'page' ) ) );
+		$per_page = max( 1, absint( $request->get_param( 'per_page' ) ) );
+		$type     = $request->get_param( 'type' ) ?? 'all';
+		$search   = $request->get_param( 'search' );
+
+		// Pagination defaults for backward compatibility when upstream values are unavailable.
+		$total        = 0;
+		$total_pages  = 0;
+		$current_page = $page;
+		$all_items    = array();
+		$has_more     = false;
+
+		// Retrieve the GoDAM API key stored in WordPress options.
+		$api_key = get_option( 'rtgodam-api-key', '' );
+
+		// Proceed only if the media type is provided and API key exists.
+		if ( isset( $type ) && ! empty( $api_key ) ) {
+			// Construct the GoDAM API endpoint URL.
+			$api_url = RTGODAM_API_BASE . '/api/method/godam_core.api.file.get_list_of_files_with_api_key';
+
+			// Prepare request body with API key and parameters.
+			$request_body = array(
+				'api_key'   => $api_key,
+				'page_size' => $per_page,
+				'page'      => $page,
+			);
+
+			// For video, GoDAM expects `job_type=stream`.
+			if ( 'video' === $type ) {
+				$request_body['job_type'] = 'stream';
+			} elseif ( 'application/pdf' === $type ) {
+				/*
+				 * Documents span two job types on Central: `pdf` for a file that needed no
+				 * conversion, and `document` for a Word / Excel / PowerPoint / OpenDocument /
+				 * text file it rendered to a preview PDF. Both belong in the same tab, and
+				 * get_list_of_files accepts a comma-separated list for exactly this case.
+				 */
+				$request_body['job_type'] = 'pdf,document';
+			} elseif ( 'image-video' !== $type && 'all' !== $type ) { // TODO: For job type 'image-video', we need to add support on Central.
+				$request_body['job_type'] = $type;
+			}
+
+			// Set the search argument.
+			if ( ! empty( $search ) ) {
+				$request_body['search'] = $search;
+			}
+
+			$args = array(
+				'body'    => wp_json_encode( $request_body ),
+				'headers' => array(
+					'Content-Type' => 'application/json',
+				),
+			);
+
+			// Use vip_safe_wp_remote_post as primary and wp_safe_remote_post as fallback.
+			if ( function_exists( 'vip_safe_wp_remote_post' ) ) {
+				$response = vip_safe_wp_remote_post( $api_url, $args, 3, 3 );
+			} else {
+				$response = wp_safe_remote_post( $api_url, $args );
+			}
+
+			// Check for WP_Error or non-200 status codes.
+			if ( is_wp_error( $response ) ) {
+				return rest_ensure_response(
+					array(
+						'success' => false,
+						'message' => sprintf(
+							// translators: %s is the error message from the GoDAM API request.
+							__( 'GoDAM API request failed: %s', 'godam' ),
+							$response->get_error_message()
+						),
+					)
+				);
+			}
+
+			$response_code = wp_remote_retrieve_response_code( $response );
+
+			if ( 200 !== $response_code ) {
+				return rest_ensure_response(
+					array(
+						'success' => false,
+						'message' => sprintf(
+							// translators: %s is the HTTP status code from the GoDAM API response.
+							__( 'GoDAM API returned HTTP status: %s', 'godam' ),
+							$response_code
+						),
+					)
+				);
+			}
+
+			$body = json_decode( wp_remote_retrieve_body( $response ) );
+
+			if ( ! isset( $body->message->files ) || ! is_array( $body->message->files ) ) {
+				return rest_ensure_response(
+					array(
+						'success' => false,
+						'message' => __( 'Unexpected API response format.', 'godam' ),
+					)
+				);
+			}
+
+			$response     = $body->message->files;
+			$total        = isset( $body->message->total_count ) ? absint( $body->message->total_count ) : 0;
+			$total_pages  = isset( $body->message->total_pages ) ? absint( $body->message->total_pages ) : 0;
+			$current_page = isset( $body->message->current_page ) ? max( 1, absint( $body->message->current_page ) ) : $page;
+			$has_more     = isset( $body->message->has_more ) ? (bool) $body->message->has_more : ( $total_pages > 0 ? $current_page < $total_pages : false );
+
+			$all_items = array();
+
+			// Prepare and normalize each media item for compatibility with WordPress Media Library.
+			foreach ( $response as $key => $item ) {
+				$all_items[ $key ] = Media_Library_Ajax::get_instance()->prepare_godam_media_item( $item );
+				/**
+				 * For audio type, ensure that meta keys for artist and album exist.
+				 *
+				 * Note - This is a temporary fix till API starts sending the meta fields either.
+				 */
+				if ( 'audio' === $type ) {
+					$all_items[ $key ]['meta']           = isset( $all_items[ $key ]['meta'] ) ? $all_items[ $key ]['meta'] : array();
+					$all_items[ $key ]['meta']['artist'] = isset( $all_items[ $key ]['meta']['artist'] ) ? $all_items[ $key ]['meta']['artist'] : '';
+					$all_items[ $key ]['meta']['album']  = isset( $all_items[ $key ]['meta']['album'] ) ? $all_items[ $key ]['meta']['album'] : '';
+				}
+			}
+		}
+
+		// Return a REST response with pagination and status details.
+		return rest_ensure_response(
+			array(
+				'success'      => true,
+				'message'      => __( 'Filtered GoDAM files by MIME type.', 'godam' ),
+				'data'         => array_values( $all_items ),
+				'total_items'  => $total,
+				'total_count'  => $total,
+				'total_pages'  => $total_pages,
+				'current_page' => $current_page,
+				'mime_type'    => $type,
+				'page'         => $page,
+				'per_page'     => $per_page,
+				'has_more'     => $has_more,
+			)
+		);
+	}
+
+	/**
+	 * Creates a virtual media attachment entry in the WordPress Media Library.
+	 *
+	 * This is primarily used to allow external media (like GoDAM-hosted videos/audios)
+	 * to be represented within the native Media Library interface, enabling support
+	 * for layering, editing, or interaction via Gutenberg/Elementor blocks.
+	 *
+	 * @param \WP_REST_Request $request REST API request object.
+	 * @return \WP_REST_Response|\WP_Error API response with attachment data or error.
+	 */
+	public function create_media_entry( $request ) {
+		// Retrieve request payload.
+		$data = $request->get_json_params();
+
+		// Validate required fields.
+		if ( empty( $data['id'] ) || empty( $data['title'] ) || empty( $data['url'] ) || empty( $data['mime'] ) ) {
+			return new \WP_Error( 'missing_params', __( 'Required fields are missing.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Validate MIME type against an allowed pattern to prevent stored XSS.
+		// The endpoint doesn't declare argument schemas, so guard against
+		// non-string payloads (array/object/number) before string operations —
+		// otherwise preg_match()/strtolower() raise a TypeError → 500.
+		if ( ! is_string( $data['mime'] ) ) {
+			return new \WP_Error( 'invalid_mime', __( 'Invalid or disallowed MIME type.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Normalize via sanitize_mime_type(): strips characters outside the RFC
+		// 2045 token set, lowercases, and returns '' for completely invalid input.
+		$mime = sanitize_mime_type( $data['mime'] );
+		if ( '' === $mime ) {
+			return new \WP_Error( 'invalid_mime', __( 'Invalid or disallowed MIME type.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Accepts video/*, audio/*, image/* plus the document types — documents are handled by
+		// the 'pdf'/'document' branch below and otherwise can't form a virtual entry. The
+		// document list is enumerated rather than pattern-matched because it spans several
+		// unrelated vendor prefixes, and because widening it to all of application/* would let
+		// through executables and archives.
+		if (
+			! preg_match( '/^(video|audio|image)\/[a-z0-9][a-z0-9!#$&\-^_.+]{0,126}$/', $mime )
+			&& ! array_key_exists( $mime, rtgodam_get_supported_document_types() )
+		) {
+			return new \WP_Error( 'invalid_mime', __( 'Invalid or disallowed MIME type.', 'godam' ), array( 'status' => 400 ) );
+		}
+
+		// Use the normalized value for the rest of the handler.
+		$data['mime'] = $mime;
+
+		// Build (or find an existing) virtual attachment for this payload.
+		$attach_id = $this->create_virtual_attachment( $data );
+
+		if ( is_wp_error( $attach_id ) ) {
+			return new \WP_REST_Response(
+				array(
+					'success' => false,
+					'error'   => $attach_id->get_error_message(),
+				),
+				500
+			);
+		}
+
+		/**
+		 * Fires before reading this attachment's JS-shaped data, so
+		 * integrations that centralize media on another site can switch
+		 * context first — runs after create_virtual_attachment()'s own wrap
+		 * has already restored.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		$attachment_js_data = wp_prepare_attachment_for_js( $attach_id );
+		do_action( 'rtgodam_after_attachment_lookup' );
+
+		return new \WP_REST_Response(
+			array(
+				'success'    => true,
+				'attachment' => $attachment_js_data,
+				'message'    => __( 'Attachment ready', 'godam' ),
+			),
+			200
+		);
+	}
+
+	/**
+	 * Create (or return an existing) virtual media attachment from a GoDAM media
+	 * payload — a WordPress attachment that represents GoDAM-hosted media via its
+	 * transcoding metadata, without downloading the file.
+	 *
+	 * Extracted from create_media_entry() so it can be reused server-side (e.g. by
+	 * the demo-assets helper). Dedupes by `rtgodam_transcoding_job_id`, so repeat
+	 * calls for the same GoDAM id return the existing attachment.
+	 *
+	 * @param array $data GoDAM media payload: id, title, url, mime, type, plus
+	 *                    optional mpd_url, hls_url, icon, filename, width, height,
+	 *                    filesizeInBytes, video_duration, description, owner.
+	 * @param array $opts Options. `is_demo` (bool): tag as a demo asset
+	 *                    (`rtgodam_is_demo_attachment`) and skip SaaS registration.
+	 * @return int|\WP_Error Attachment ID, or WP_Error on failure.
+	 */
+	public function create_virtual_attachment( $data, $opts = array() ) {
+		/**
+		 * Fires before resolving/creating this virtual attachment, so
+		 * integrations that centralize media on another site can switch
+		 * context first — the dedupe lookups and the eventual
+		 * wp_insert_attachment() call all need to run against that site.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		try {
+			return $this->create_virtual_attachment_after_lookup( $data, $opts );
+		} finally {
+			do_action( 'rtgodam_after_attachment_lookup' );
+		}
+	}
+
+	/**
+	 * Resolve or create the virtual attachment and populate its metadata.
+	 *
+	 * Split out of create_virtual_attachment() so a wp-dam-style site-switch
+	 * bracket can wrap this entire body.
+	 *
+	 * @since 2.2.0
+	 *
+	 * @param array $data GoDAM media data.
+	 * @param array $opts Options (e.g. 'is_demo').
+	 * @return int|\WP_Error Attachment ID, or WP_Error on insert failure.
+	 */
+	private function create_virtual_attachment_after_lookup( $data, $opts = array() ) {
+		$is_demo = ! empty( $opts['is_demo'] );
+
+		// Sanitize the GoDAM ID.
+		$godam_id = sanitize_text_field( $data['id'] );
+
+		// If godam_id is numeric and already an attachment, reuse it.
+		if ( is_numeric( $godam_id ) ) {
+			$attachment_post = get_post( $godam_id ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			if ( $attachment_post && 'attachment' === $attachment_post->post_type ) {
+				return (int) $godam_id;
+			}
+		}
+
+		// Reuse an existing entry for this GoDAM id instead of duplicating.
+		$existing = new \WP_Query( // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			array(
+				'post_type'      => 'attachment',
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Required for finding attachment by transcoding job ID.
+				'meta_key'       => 'rtgodam_transcoding_job_id',
+				'meta_value'     => $godam_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'post_status'    => 'any',
+				'fields'         => 'ids',
+				'posts_per_page' => 1,
+			)
+		);
+
+		if ( $existing->have_posts() ) {
+			return (int) $existing->posts[0];
+		}
+
+		// Prepare post data for the virtual media entry.
+		$attachment = array(
+			'post_title'     => sanitize_text_field( $data['title'] ),
+			'post_content'   => sanitize_textarea_field( $data['description'] ?? '' ),
+			'post_mime_type' => sanitize_text_field( $data['mime'] ),
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'guid'           => esc_url_raw( $data['url'] ),
+		);
+
+		// Pre-set markers before insertion so add_attachment listeners see them. The
+		// demo marker is set first so the virtual-media registrar can skip demos.
+		$pre_setter = function ( $new_id ) use ( $godam_id, $is_demo ) {
+			if ( $is_demo ) {
+				update_post_meta( $new_id, 'rtgodam_is_demo_attachment', 1 ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): $pre_setter closure — covered transitively, since it's registered on 'add_attachment' immediately before (and removed immediately after) the wp_insert_attachment() call a few lines above, which fires that hook synchronously on the same call stack.
+			}
+			update_post_meta( $new_id, '_godam_original_id', $godam_id ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): $pre_setter closure — covered transitively, since it's registered on 'add_attachment' immediately before (and removed immediately after) the wp_insert_attachment() call a few lines above, which fires that hook synchronously on the same call stack.
+		};
+		add_action( 'add_attachment', $pre_setter, 1, 1 );
+
+		$attach_id = wp_insert_attachment( $attachment, $data['title'] ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+		remove_action( 'add_attachment', $pre_setter, 1 );
+
+		if ( is_wp_error( $attach_id ) ) {
+			return $attach_id;
+		}
+
+		// Ensure markers are persisted (idempotent with the pre-setter).
+		if ( $is_demo ) {
+			update_post_meta( $attach_id, 'rtgodam_is_demo_attachment', 1 ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		}
+		update_post_meta( $attach_id, '_godam_original_id', $godam_id ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		update_post_meta( $attach_id, '_owner_email', sanitize_email( $data['owner'] ?? '' ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		update_post_meta( $attach_id, 'rtgodam_transcoded_url', esc_url_raw( $data['mpd_url'] ?? '' ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		update_post_meta( $attach_id, 'rtgodam_transcoding_status', 'transcoded' ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		update_post_meta( $attach_id, 'rtgodam_transcoding_job_id', $godam_id ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		update_post_meta( $attach_id, '_wp_attached_file', sanitize_text_field( $data['filename'] ?? '' ) ); // Virtual media path. // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+		$video_duration_in_seconds = 0;
+		$video_duration_formatted  = '';
+		if ( isset( $data['video_duration'] ) && ! empty( $data['video_duration'] ) ) {
+			$video_duration_in_seconds = is_numeric( $data['video_duration'] ) ? (int) $data['video_duration'] : 0;
+			$video_duration_formatted  = gmdate( 'i:s', $video_duration_in_seconds );
+		}
+
+		$type = $data['type'] ?? '';
+
+		if ( 'video' === $type ) {
+			update_post_meta( $attach_id, 'rtgodam_hls_transcoded_url', esc_url_raw( $data['hls_url'] ?? '' ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+			$wp_attachment_metadata = array(
+				'filesize' => isset( $data['filesizeInBytes'] ) ? (int) $data['filesizeInBytes'] : 0,
+			);
+
+			// Persist intrinsic dimensions when GoDAM Central provides non-zero values
+			// so the editor can reserve aspect-ratio space without waiting for loadedmetadata.
+			$video_width  = isset( $data['width'] ) ? (int) $data['width'] : 0;
+			$video_height = isset( $data['height'] ) ? (int) $data['height'] : 0;
+			if ( $video_width > 0 && $video_height > 0 ) {
+				$wp_attachment_metadata['width']  = $video_width;
+				$wp_attachment_metadata['height'] = $video_height;
+			}
+
+			if ( ! empty( $video_duration_in_seconds ) ) {
+				update_post_meta( $attach_id, '_video_duration', $video_duration_in_seconds ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+				$wp_attachment_metadata['length']           = $video_duration_in_seconds;
+				$wp_attachment_metadata['length_formatted'] = $video_duration_formatted;
+			}
+
+			// Set Video thumbnail from icon URL if provided.
+			if ( ! empty( $data['icon'] ) ) {
+				update_post_meta( $attach_id, 'rtgodam_media_video_thumbnail', esc_url_raw( $data['icon'] ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			}
+
+			update_post_meta( $attach_id, '_wp_attachment_metadata', $wp_attachment_metadata ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+		} elseif ( 'image' === $type ) {
+			// Initialize metadata with basic info.
+			$wp_attachment_metadata = array(
+				'filesize' => isset( $data['filesizeInBytes'] ) ? (int) $data['filesizeInBytes'] : 0,
+				'sizes'    => array(),
+			);
+
+			// Add width and height if available (non-zero).
+			$image_width  = isset( $data['width'] ) ? (int) $data['width'] : 0;
+			$image_height = isset( $data['height'] ) ? (int) $data['height'] : 0;
+			if ( $image_width > 0 && $image_height > 0 ) {
+				$wp_attachment_metadata['width']  = $image_width;
+				$wp_attachment_metadata['height'] = $image_height;
+			}
+
+			update_post_meta( $attach_id, '_wp_attachment_metadata', $wp_attachment_metadata ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+			// Request image subsizes from GoDAM Central.
+			$this->request_image_subsizes_from_godam( $godam_id, $attach_id );
+		} elseif ( 'audio' === $type ) {
+			$wp_attachment_metadata = array(
+				'filesize'  => isset( $data['filesizeInBytes'] ) ? (int) $data['filesizeInBytes'] : 0,
+				'mime_type' => $data['mime'],
+			);
+
+			update_post_meta( $attach_id, '_wp_attachment_metadata', $wp_attachment_metadata ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+			// Persist the audio thumbnail from GoDAM Central (falls back to the
+			// icon URL) so the block can surface it. Mirrors the video/PDF paths.
+			$audio_thumbnail = ! empty( $data['thumbnail_url'] ) ? $data['thumbnail_url'] : ( $data['icon'] ?? '' );
+			if ( ! empty( $audio_thumbnail ) ) {
+				update_post_meta( $attach_id, 'rtgodam_media_audio_thumbnail', esc_url_raw( $audio_thumbnail ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			}
+		} elseif ( 'pdf' === $type || 'document' === $type ) {
+			// 'pdf' is a file Central stored as-is; 'document' is one it rendered to a preview
+			// PDF. Identical here apart from where the previewable PDF comes from.
+			$wp_attachment_metadata = array(
+				'filesize' => isset( $data['filesizeInBytes'] ) ? (int) $data['filesizeInBytes'] : 0,
+			);
+
+			update_post_meta( $attach_id, '_wp_attachment_metadata', $wp_attachment_metadata ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+
+			// Set PDF thumbnail from icon URL if provided.
+			if ( ! empty( $data['icon'] ) ) {
+				update_post_meta( $attach_id, 'rtgodam_media_pdf_thumbnail', esc_url_raw( $data['icon'] ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			}
+
+			/*
+			 * The PDF the Document block renders. For a converted document Central sends it as
+			 * a dedicated field, because `mpd_url` (stored above as rtgodam_transcoded_url)
+			 * points at the ORIGINAL .docx/.xlsx there and is not renderable. For a PDF the two
+			 * are the same file, so fall back to it and give readers one key for both cases.
+			 *
+			 * Deliberately not set when Central sent no preview — a password-protected document
+			 * has none, and the block falls back to offering the original as a download.
+			 */
+			$preview_pdf_url = ! empty( $data['preview_pdf_url'] )
+				? $data['preview_pdf_url']
+				: ( 'pdf' === $type ? ( $data['mpd_url'] ?? '' ) : '' );
+
+			if ( ! empty( $preview_pdf_url ) ) {
+				update_post_meta( $attach_id, 'rtgodam_preview_pdf_url', esc_url_raw( $preview_pdf_url ) ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			}
+		}
+
+		// Persist chapters from GoDAM Central into rtgodam_meta for any media type
+		// that carries them (video + audio). The block, its render template, the
+		// video player and the customization editor all resolve chapters from
+		// rtgodam_meta['chapters']. Guarded on non-empty, so image/PDF (which
+		// never carry chapters) are a no-op.
+		if ( ! empty( $data['chapters'] ) && is_array( $data['chapters'] ) ) {
+			$sanitized_chapters = array();
+			foreach ( $data['chapters'] as $chapter ) {
+				$chapter              = (array) $chapter;
+				$sanitized_chapters[] = array(
+					'id'           => isset( $chapter['id'] ) ? sanitize_text_field( $chapter['id'] ) : '',
+					'text'         => isset( $chapter['text'] ) ? sanitize_text_field( $chapter['text'] ) : '',
+					'originalTime' => isset( $chapter['originalTime'] ) ? sanitize_text_field( $chapter['originalTime'] ) : '',
+					'startTime'    => isset( $chapter['startTime'] ) ? sanitize_text_field( (string) $chapter['startTime'] ) : '0',
+				);
+			}
+
+			if ( ! empty( $sanitized_chapters ) ) {
+				$rtgodam_meta = get_post_meta( $attach_id, 'rtgodam_meta', true ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+				$rtgodam_meta = is_array( $rtgodam_meta ) ? $rtgodam_meta : array();
+
+				$rtgodam_meta['chapters'] = $sanitized_chapters;
+				update_post_meta( $attach_id, 'rtgodam_meta', $rtgodam_meta ); // godam-coverage-ignore -- create_virtual_attachment_after_lookup(): covered transitively — caller (create_virtual_attachment) wraps the entire call in try/finally.
+			}
+		}
+
+		return (int) $attach_id;
+	}
+
+	/**
+	 * Retrieves a media attachment by its GoDAM ID.
+	 *
+	 * If an attachment exists in the Media Library with `_godam_original_id` matching
+	 * the given ID, its corresponding media object is fetched using the core WP REST API.
+	 *
+	 * If no match is found, the method assumes the GoDAM ID is already a valid
+	 * WordPress attachment ID and attempts to fetch it directly.
+	 *
+	 * This is useful for clients who want to retrieve media metadata via REST,
+	 * regardless of whether it's a native or virtual entry.
+	 *
+	 * @param \WP_REST_Request $request The REST request containing the GoDAM media ID.
+	 * @return \WP_REST_Response|\WP_Error The media object response or an error if not found.
+	 */
+	public function get_attachment_by_id( $request ) {
+		// Sanitize the GoDAM media ID from the request.
+		$godam_id = sanitize_text_field( $request['id'] );
+
+		/**
+		 * Fires before resolving/reading attachment data for a GoDAM-original-ID
+		 * lookup, so integrations that centralize media on another site can
+		 * switch context first. This covers both the WP_Query match on
+		 * '_godam_original_id' and the internal core media request that follows,
+		 * since both resolve the same attachment.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+
+		// Try to find an attachment that matches the GoDAM original ID.
+		$query = new \WP_Query(
+			array(
+				'post_type'      => 'attachment',
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Required for finding attachment by GoDAM original ID.
+				'meta_key'       => '_godam_original_id',
+				'meta_value'     => $godam_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'post_status'    => 'inherit',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+			)
+		);
+
+		// If a match is found, use that attachment ID.
+		// Otherwise, fallback to assuming $godam_id itself is a WordPress attachment ID.
+		$attachment_id = $godam_id;
+
+		if ( $query->have_posts() ) {
+			$attachment_id = $query->posts[0];
+		}
+
+		// Prepare an internal REST request to fetch media item via core endpoint.
+		$internal_request = new \WP_REST_Request( 'GET', '/wp/v2/media/' . $attachment_id );
+		// Execute the request and capture the response.
+		$response = rest_do_request( $internal_request );
+
+		do_action( 'rtgodam_after_attachment_lookup' );
+
+		// Return the full media object (or WP_Error if not found).
+		return $response;
+	}
+
+	/**
+	 * Get the number of items in a media folder by id with mime type filtering support.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function get_count_by_category( $request ) {
+		if ( ! isset( $request['folder_id'] ) ) {
+			return rest_ensure_response(
+				array(
+					'message' => __( 'A Folder ID is required', 'godam' ),
+				)
+			);
+		}
+
+		$folder_id = absint( sanitize_text_field( $request['folder_id'] ) );
+		$tax_query = array(
+			array(
+				'taxonomy' => 'media-folder',
+				'field'    => 'term_id',
+				'operator' => ( 0 === $folder_id ) ? 'NOT EXISTS' : 'IN',
+			),
+		);
+
+		if ( 0 !== $folder_id ) {
+			$tax_query[0]['terms'] = $folder_id;
+		}
+
+		$args = array(
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'fields'         => 'ids',
+			'posts_per_page' => 1,
+			'no_found_rows'  => false,
+			'tax_query'      => $tax_query, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+		);
+
+		// Add mime type filtering if available.
+		$mime_type_filter = Media_Folder_Utils::get_instance()->get_current_mime_type_filter();
+
+		if ( $mime_type_filter ) {
+			if ( is_array( $mime_type_filter ) ) {
+				$args['post_mime_type'] = $mime_type_filter;
+			} elseif ( 'image/' === $mime_type_filter ) {
+				$args['post_mime_type'] = 'image';
+			} elseif ( 'video/' === $mime_type_filter ) {
+				$args['post_mime_type'] = 'video';
+			} elseif ( 'audio/' === $mime_type_filter ) {
+				$args['post_mime_type'] = 'audio';
+			} else {
+				$args['post_mime_type'] = $mime_type_filter;
+			}
+		}
+
+		/**
+		 * Fires before counting attachments in this media folder, so
+		 * integrations that centralize media on another site can switch
+		 * context first. The WP_Query below counts attachment posts
+		 * (post_type 'attachment') tagged with this media-folder term.
+		 *
+		 * @since 2.2.0
+		 */
+		do_action( 'rtgodam_before_attachment_lookup' );
+		$query = new \WP_Query( $args );
+		do_action( 'rtgodam_after_attachment_lookup' );
+
+		return rest_ensure_response(
+			array(
+				'folder_id' => $folder_id,
+				'count'     => $query->found_posts,
+			)
+		);
+	}
+
+	/**
+	 * Get media-folders terms by various parameters.
+	 *
+	 * @param \WP_REST_Request $request REST API request.
+	 *
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function get_media_folders( $request ) {
+		$taxonomy = Media_Folders::SLUG;
+		$bookmark = (bool) $request->get_param( 'bookmark' );
+		$locked   = (bool) $request->get_param( 'locked' );
+
+		$args = array(
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => false,
+			'orderby'    => 'name',
+			'order'      => 'ASC',
+			'number'     => 100, // Maximum number of terms to return.
+		);
+
+		// Initialize meta_query as empty array.
+		$meta_queries = array();
+
+		if ( ! empty( $bookmark ) ) {
+			$meta_queries[] = array(
+				'key'   => 'bookmark',
+				'value' => $bookmark,
+			);
+		}
+
+		if ( ! empty( $locked ) ) {
+			$meta_queries[] = array(
+				'key'   => 'locked',
+				'value' => $locked,
+			);
+		}
+
+		if ( ! empty( $meta_queries ) ) {
+			$args['meta_query'] = $meta_queries; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Meta query is needed to filter by bookmark and locked.
+		}
+
+		$total_pages = 0;
+		$total_items = 0;
+
+		if ( ! $locked && ! $bookmark ) {
+			$page = (int) $request->get_param( 'page' );
+
+			if ( $page < 1 ) {
+				$page = 1; // Default to page 1 if not set or invalid.
+			}
+
+			$per_page = (int) $request->get_param( 'per_page' );
+
+			if ( $per_page < 1 ) {
+				$per_page = 20; // Default to 20 items per page if not set or invalid.
+			}
+
+			$args['number'] = $per_page;
+			$args['offset'] = ( $page - 1 ) * $per_page;
+
+			$args['parent'] = (int) ( $request->get_param( 'parent' ) ?? 0 );
+
+			$total_items = $this->get_total_parent_media_folders_count();
+			$total_pages = ceil( $total_items / $per_page );
+		}
+
+		$terms = get_terms( $args );
+
+		if ( ! $locked && ! $bookmark ) {
+			$terms = $this->get_all_children_terms( $terms, $taxonomy );
+		}
+
+		// Prepare the response data.
+		$prepared_terms = $this->prepare_term_responses( $terms );
+
+		// Ensure we always have an array, never null.
+		if ( is_null( $prepared_terms ) || ! is_array( $prepared_terms ) ) {
+			$prepared_terms = array();
+		}
+
+		// Create the response.
+		$response = rest_ensure_response( $prepared_terms );
+
+		// Add headers only for paginated requests.
+		if ( ! $locked && ! $bookmark ) {
+			$response->header( 'X-Wp-Total', $total_items );
+			$response->header( 'X-Wp-Totalpages', $total_pages );
+			$response->header( 'X-Wp-Current-Page', $page );
+			$response->header( 'X-Wp-Per-Page', $per_page );
+		}
+
+		return $response;
+	}
+
+	/**
+	 * Get all child terms recursively for a given set of terms.
+	 *
+	 * This method retrieves all child terms for the provided terms in the specified taxonomy.
+	 *
+	 * @param array|\WP_Error $terms    The terms to get children for.
+	 * @param string          $taxonomy The taxonomy to query.
+	 *
+	 * @return array An array of all child terms.
+	 */
+	private function get_all_children_terms( $terms, $taxonomy ) {
+		if ( empty( $terms ) || is_wp_error( $terms ) ) {
+			return array();
+		}
+
+		$all_terms = array();
+
+		foreach ( $terms as $term ) {
+			$all_terms[] = $term;
+
+			// Get child terms recursively.
+			$children = get_term_children( $term->term_id, $taxonomy );
+			if ( ! empty( $children ) && ! is_wp_error( $children ) ) {
+				foreach ( $children as $child_id ) {
+					$child_term = get_term( $child_id, $taxonomy );
+					if ( ! is_wp_error( $child_term ) && $child_term ) {
+						$all_terms[] = $child_term;
+					}
+				}
+			}
+		}
+
+		return $all_terms;
+	}
+
+	/**
+	 * Get the total count of top-level (parent) media folders only.
+	 *
+	 * @return int Total count of parent media folders.
+	 */
+	private function get_total_parent_media_folders_count() {
+		$taxonomy = Media_Folders::SLUG;
+		$args     = array(
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => false,
+			'fields'     => 'ids',
+			'parent'     => 0,
+		);
+		$term_ids = get_terms( $args );
+
+		if ( is_wp_error( $term_ids ) ) {
+			return 0;
+		}
+
+		return count( $term_ids );
+	}
+
+	/**
+	 * Prepare term responses for media folders.
+	 *
+	 * This method formats the term data for the REST API response.
+	 *
+	 * @param array|\WP_Error $terms The terms to prepare.
+	 *
+	 * @return array Prepared term data.
+	 */
+	private function prepare_term_responses( $terms ) {
+		if ( empty( $terms ) || is_wp_error( $terms ) ) {
+			return array();
+		}
+
+		$prepared = array();
+
+		foreach ( $terms as $term ) {
+			$locked_raw   = get_term_meta( $term->term_id, 'locked', true );
+			$bookmark_raw = get_term_meta( $term->term_id, 'bookmark', true );
+
+			$locked   = ( '1' === $locked_raw || 1 === $locked_raw || true === $locked_raw || 'true' === $locked_raw ) ? true : false;
+			$bookmark = ( '1' === $bookmark_raw || 1 === $bookmark_raw || true === $bookmark_raw || 'true' === $bookmark_raw ) ? true : false;
+
+			// Get current mime type filter to return filtered counts.
+			$mime_type_filter = Media_Folder_Utils::get_instance()->get_current_mime_type_filter();
+
+			$prepared[] = array(
+				'id'              => $term->term_id,
+				'name'            => $term->name,
+				'parent'          => $term->parent,
+				'meta'            => array(
+					'locked'   => $locked,
+					'bookmark' => $bookmark,
+				),
+				'attachmentCount' => (int) Media_Folder_Utils::get_instance()->get_attachment_count( $term->term_id, false, $mime_type_filter ),
+			);
+		}
+
+		return $prepared;
+	}
+
+	/**
+	 * Request image subsizes generation from GoDAM Central.
+	 *
+	 * Sends a request to GoDAM Central API to generate image subsizes based on
+	 * all registered WordPress image subsizes (core, theme, and plugin). The API endpoint
+	 * should accept:
+	 * - job_id: The GoDAM file ID
+	 * - api_key: The GoDAM API key
+	 * - sizes_data: Array of size requests with width, height, crop
+	 * - events_callback_url: The URL to send events to.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string $job_id        The GoDAM job ID.
+	 * @param int    $attachment_id The WordPress attachment ID.
+	 * @return bool True if request was successful, false otherwise.
+	 */
+	private function request_image_subsizes_from_godam( $job_id, $attachment_id ) {
+		$api_key = get_option( 'rtgodam-api-key', '' );
+
+		if ( empty( $api_key ) ) {
+			return false;
+		}
+
+		// Get all registered image subsizes from WordPress.
+		$registered_sizes = wp_get_registered_image_subsizes();
+
+		if ( empty( $registered_sizes ) ) {
+			return false;
+		}
+
+		// Prepare size requests for GoDAM Central.
+		// Only add the 100x100 crop fallback when no equivalent registered size already covers it.
+		$size_requests    = array();
+		$has_100x100_crop = false;
+		foreach ( $registered_sizes as $size_name => $size_data ) {
+			// Skip cropped sizes that are missing a width or height — GoDAM requires both dimensions to crop.
+			if ( $size_data['crop'] && ( empty( $size_data['width'] ) || empty( $size_data['height'] ) ) ) {
+				continue;
+			}
+
+			// Normalize crop to boolean — WordPress allows array values like ['left','top']
+			// for position-based cropping; GoDAM expects a plain boolean.
+			$crop_bool = (bool) $size_data['crop'];
+
+			$size_requests[] = array(
+				'width'  => $size_data['width'],
+				'height' => $size_data['height'],
+				'crop'   => $crop_bool,
+			);
+
+			if ( 100 === (int) $size_data['width'] && 100 === (int) $size_data['height'] && $crop_bool ) {
+				$has_100x100_crop = true;
+			}
+		}
+
+		// Add the 100x100 crop fallback only when no equivalent registered size exists.
+		// This size is commonly used in the Media Library list view for thumbnails.
+		if ( ! $has_100x100_crop ) {
+			$size_requests[] = array(
+				'width'  => 100,
+				'height' => 100,
+				'crop'   => true,
+			);
+		}
+
+		// Remove duplicate size entries.
+		$size_requests = array_values(
+			array_unique( $size_requests, SORT_REGULAR )
+		);
+
+		// Construct the GoDAM API endpoint URL.
+		$api_url = RTGODAM_API_BASE . '/api/method/godam_core.api.image.generate_resized_images';
+
+		$events_callback_url = rest_url( 'godam/v1/media-library/generate-image-subsizes-callback' );
+
+		// Prepare request body.
+		$request_body = array(
+			'job_id'              => $job_id,
+			'api_key'             => $api_key,
+			'sizes_data'          => $size_requests,
+			'events_callback_url' => $events_callback_url,
+		);
+
+		$args = array(
+			'body'    => wp_json_encode( $request_body ),
+			'headers' => array(
+				'Content-Type' => 'application/json',
+			),
+		);
+
+		// Use vip_safe_wp_remote_post as primary and wp_safe_remote_post as fallback.
+		if ( function_exists( 'vip_safe_wp_remote_post' ) ) {
+			$response = vip_safe_wp_remote_post( $api_url, $args, 3, 3 );
+		} else {
+			$response = wp_safe_remote_post( $api_url, $args );
+		}
+
+		// Check for WP_Error or non-200 status codes.
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$response_code = wp_remote_retrieve_response_code( $response );
+
+		if ( 200 !== $response_code ) {
+			return false;
+		}
+
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( empty( $body ) || ! is_array( $body ) ) {
+			return false;
+		}
+
+		$body = isset( $body['message'] ) && ! empty( $body['message'] ) ? $body['message'] : array();
+
+		if ( ! isset( $body['message'] ) ) {
+			return false;
+		}
+
+		if ( 'sizes_exist' === $body['message'] && isset( $body['sizes'] ) && is_array( $body['sizes'] ) ) {
+			return $this->update_image_attachment_meta( $body['sizes'], $job_id, $attachment_id );
+		}
+
+		return true;
+	}
+}

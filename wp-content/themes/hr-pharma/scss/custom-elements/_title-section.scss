@@ -1,0 +1,228 @@
+.diamond-hero {
+  position: relative;
+  overflow: hidden;
+
+  @include mobile (1100px) {
+    height: 500px;
+  }
+
+  @include mobile (800px) {
+    height: 400px;
+  }
+
+  @include mobile (700px) {
+    &:before {
+      z-index: 2;
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      content: '';
+      background: rgba(#eee, .4);
+    }
+  }
+
+  &:after {
+      z-index: 5;
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      content: '';
+      background: linear-gradient(to top, rgba(#000, .02) 0%, rgba(#000, 0) 10%, rgba(#000, 0) 100%);
+  }
+  
+  &__content {
+    z-index: 3;
+    position: absolute;
+    right: calc(50% + 50px);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 500px;
+
+    @include mobile (1120px) {
+      right: auto;
+      margin-left: 20px;
+    }
+
+    @include mobile (500px) {
+      width: auto;
+      right: 0;
+      left: 0;
+      // transform: none;
+    }
+    
+    h2 {
+      font-size: 72px;
+      line-height: 1.2;
+      font-weight: normal;
+      margin: 0 0 20px;
+      color: $primary;
+
+      @include mobile (700px) {
+        font-size: 50px;
+        margin-bottom: 5px;
+      }
+    }
+    
+    p {
+      margin: 0;
+      line-height: 1.75;
+
+      @include mobile (700px) {
+        width: 70%;
+      }
+    }
+  }
+}
+
+.diamond-grid {
+  z-index: 1;
+  width: 100%;
+  position: relative;
+  height: 550px;
+  overflow: hidden;
+
+  @include mobile (1100px) {
+    margin-top: -20px;
+  }
+
+  @include mobile (700px) {
+    margin-top: -80px;
+    transform: scale(.9);
+    overflow: visible;
+  }
+  
+  &:before {
+    content: '';
+    height: 100%;
+    width: 2000px;
+    position: absolute;
+    right: calc(50% + 200px);
+    background: #f6f6f5;
+  }
+  
+  .diamond {
+    background: #f6f6f5;
+    border-radius: 20px;
+    height: 200px;
+    width: 200px;
+    transform: rotate(45deg);
+    position: absolute;
+    // border: 1px solid blue;
+    transform-origin: 50% 50%;
+    background-size: cover;
+    overflow: hidden;
+    
+    img {
+      $size: 270px;
+
+      display: block;
+      transform: rotate(-45deg);
+      transform-origin: 50% 50%;
+      height: $size !important;
+      width: $size !important;
+      object-fit: cover;
+      max-width: $size;
+      position: absolute;
+      top: -35px;
+      left: -35px;
+    }
+    
+    &--large {
+      width: 600px;
+      height: 600px;
+      right: 50%;
+      top: -25px;
+      
+    }
+    
+    // each diamond is 320px apart
+    
+    // 1st column    
+    &--1 {
+      left: calc(50% - 120px);
+      top: -145px;
+    }
+    
+    &--2 {
+      left: calc(50% + 40px);
+      top: 15px;
+    }
+    
+    &--3 {
+      left: calc(50% + 200px);
+      top: 175px;
+    }
+    
+    &--4 {
+      left: calc(50% + 40px);
+      top: 335px;
+    }
+    
+    &--5 {
+      left: calc(50% - 120px);
+      top: 495px;
+    } 
+    
+    
+    // 2nd column    
+    &--6 {
+      left: calc(50% + 200px);
+      top: -145px;
+    }
+    
+    &--7 {
+      left: calc(50% + 360px);
+      top: 15px;
+    }
+    
+    &--8 {
+      left: calc(50% + 520px);
+      top: 175px;
+    }
+    
+    &--9 {
+      left: calc(50% + 360px);
+      top: 335px;
+    }
+    
+    &--10 {
+      left: calc(50% + 200px);
+      top: 495px;
+    }
+    
+    
+    // 3rd column    
+    &--11 {
+      left: calc(50% + 520px);
+      top: -145px;
+    }
+    
+    &--12 {
+      left: calc(50% + 680px);
+      top: 15px;
+    }
+    
+    &--13 {
+      left: calc(50% + 840px);
+      top: 175px;
+    }
+    
+    &--14 {
+      left: calc(50% + 680px);
+      top: 335px;
+    }
+    
+    &--15 {
+      left: calc(50% + 520px);
+      top: 495px;
+    }
+    
+    &--11, &--12, &--13, &--14, &--15 {
+      opacity: .4;
+    }
+  }
+}

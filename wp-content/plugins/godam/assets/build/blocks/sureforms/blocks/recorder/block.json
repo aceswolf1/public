@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "godam/srfm-recorder",
+  "title": "GoDAM Recorder",
+  "icon": "video-alt",
+  "category": "sureforms",
+  "description": "Enable audio/video submissions inside forms using the GoDAM Recorder field that supports webcam, screencast, and audio recording",
+  "keywords": [
+    "sureforms",
+    "godam",
+    "recorder"
+  ],
+  "textdomain": "godam",
+  "supports": {
+    "reusable": false,
+    "html": false
+  },
+  "example": {
+    "attributes": {
+      "preview": true
+    }
+  },
+  "attributes": {
+    "blockId": {
+      "type": "string"
+    },
+    "required": {
+      "type": "boolean",
+      "default": false
+    },
+    "label": {
+      "type": "string",
+      "default": "GoDAM Recorder"
+    },
+    "description": {
+      "type": "string",
+      "default": ""
+    },
+    "recordButton": {
+      "type": "string"
+    },
+    "fileSelector": {
+      "type": "array",
+      "default": [
+        "screen_capture",
+        "webcam",
+        "audio"
+      ]
+    },
+    "maxFileSize": {
+      "type": "number"
+    },
+    "formId": {
+      "type": "number",
+      "default": ""
+    },
+    "slug": {
+      "type": "string",
+      "default": ""
+    },
+    "errorMsg": {
+      "type": "string",
+      "default": ""
+    },
+    "blockIndex": {
+      "type": "integer"
+    }
+  },
+  "editorScript": [
+    "file:./index.js"
+  ],
+  "render": "file:./render.php"
+}

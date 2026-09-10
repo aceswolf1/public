@@ -1,0 +1,31 @@
+@import 'slicknav';
+
+nav#mobile-nav {
+	display: none;
+}
+
+.slicknav_menu {
+	// background: darken($primary, 20%);
+	@include blue_bg();
+	position: relative;
+	z-index: 100;
+
+	.slicknav_btn {
+		background: darken($primary, 10%);
+		transition: background 150ms;
+
+		&:hover {
+			background: darken($primary, 15%);
+		}
+
+		.slicknav_menutxt {
+			text-shadow: none;
+		}
+
+		.slicknav_icon {
+			&-bar {
+				box-shadow: none;
+			}
+		}
+	}
+}

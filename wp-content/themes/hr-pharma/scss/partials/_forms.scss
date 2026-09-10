@@ -1,0 +1,41 @@
+form {
+	label {
+		display: inline-block;
+		margin: .25em 0;
+	}
+
+	input[type="text"],
+	input[type="email"],
+	input[type="password"],
+	textarea {
+		padding: .5em;
+		border-radius: .2em;
+		border: 1px solid #ccc;
+		transition: border-color 150ms;
+
+		&:focus {
+			outline: none;
+			border-color: $secondary;
+		}
+	}
+
+	textarea {
+		padding: .6em;
+	}
+	
+	input[type="submit"] {
+		color: #fff;
+		background: $secondary;
+		border-radius: .2em;
+		border: none;
+		padding: 1em 2em;
+		line-height: 1;
+		outline: none;
+		transition: background 150ms;
+		cursor: pointer;
+
+		&:hover {
+			background: darken($secondary, 10%);
+		}
+	}
+}

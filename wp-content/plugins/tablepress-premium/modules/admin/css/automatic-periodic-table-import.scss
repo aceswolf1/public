@@ -1,0 +1,103 @@
+/**
+ * CSS code for the "Automatic Periodic Table Import" Screen.
+ *
+ * @package TablePress
+ * @subpackage Automatic Periodic Table Import
+ * @author Tobias Bäthge
+ * @since 2.0.0
+ */
+
+#tablepress-automatic-periodic-import-tables {
+	th,
+	td {
+		vertical-align: middle;
+	}
+
+	.column-checkbox {
+		input {
+			margin: 0;
+			vertical-align: middle;
+		}
+	}
+
+	.column-table-id {
+		min-width: 30px;
+	}
+
+	.column-table-name {
+		min-width: 120px;
+		font-weight: bold;
+		word-break: break-word;
+	}
+
+	.column-import-active {
+		min-width: 60px;
+		width: 60px;
+	}
+
+	.column-import-location {
+		min-width: 200px;
+		width: 30%;
+
+		input {
+			font-size: 12px;
+			width: 99%;
+		}
+	}
+
+	.column-import-interval {
+		min-width: 150px;
+		max-width: 150px;
+
+		select {
+			font-size: 12px;
+		}
+
+		input {
+			width: 120px;
+			font-size: 12px;
+			padding: 0 6px;
+		}
+
+		.interval-control-custom-visible {
+			margin-bottom: 6px;
+		}
+	}
+
+	.column-import-last-import {
+		min-width: 160px;
+		max-width: 190px;
+	}
+
+	.column-import-run-now {
+		min-width: 70px;
+	}
+
+	tr:not(:hover) .column-import-run-now button {
+		display: none;
+	}
+
+	thead th {
+		background-color: #ffffff;
+		position: sticky;
+		z-index: 2;
+		top: 0;
+		white-space: nowrap;
+
+		/* Fixed header */
+		@media screen and (min-width: 601px) {
+			top: var(--wp-admin--admin-bar--height);
+		}
+	}
+
+	/* Vertical positioning of the "Active" toggle control. */
+	.components-toggle-control {
+		margin-bottom: 0;
+	}
+
+	/* TextControl does not have a size="compact" prop, so that this has to be done in CSS. */
+	input.components-text-control__input {
+		height: 32px;
+		padding: 6px 8px;
+	}
+}

@@ -1,0 +1,53 @@
+.middle {
+	height: 280px;
+	position: relative;
+	overflow: hidden;
+
+	@include mobile (900px) {
+		height: 250px;
+	}
+
+	@include mobile (700px) {
+		height: 180px;
+	}
+
+	&:after {
+	    z-index: 5;
+	    position: absolute;
+	    top: 0;
+	    right: 0;
+	    bottom: 0;
+	    left: 0;
+	    content: '';
+	    background: linear-gradient(to top, rgba(#000, .02) 0%, rgba(#000, 0) 10%, rgba(#000, 0) 100%);
+	}
+
+	.diamond-hero {
+		// position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		
+		&__content {
+			width: $grid;
+			margin: 0 auto;
+			right: auto;
+			left: 50%;
+			transform: translateY(-50%) translateX(-50%);
+		}
+
+		@include mobile ($grid) {
+			&__content {
+				margin: 0 15px;
+				width: calc(100% - 60px);
+
+				h2 {
+					font-size: 50px;
+
+					@include mobile (700px) {
+						font-size: 38px;
+					}
+				}
+			}
+		}
+	}
+}

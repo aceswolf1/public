@@ -1,0 +1,14 @@
+.snackbar {
+	position: fixed;
+	z-index: 9999;
+	bottom: 1rem;
+	right: 1rem;
+
+	&.success {
+		background-color: #4CAF50;
+	}
+
+	&.fail {
+		background-color: #f44336;
+	}
+}

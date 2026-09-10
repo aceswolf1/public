@@ -1,0 +1,48 @@
+/**
+ * TablePress DataTables Scroll Buttons CSS.
+ *
+ * @package TablePress
+ * @subpackage DataTables
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+.tablepress-dt-scroll-buttons-wrapper-visible {
+	$button-width: 30px;
+
+	.dt-container .dt-layout-row.dt-layout-table & {
+		display: flex;
+		flex-direction: row;
+		gap: 0;
+		align-items: flex-start;
+	}
+
+	.dt-scroll {
+		width: calc(100% - calc(2 * $button-width));
+	}
+
+	.dt-scroll-body {
+		scroll-behavior: smooth;
+	}
+
+	.tablepress-dt-scroll-button {
+		position: sticky;
+		top: 200px;
+		height: 100px;
+		width: $button-width;
+		border: none;
+		cursor: pointer;
+		font-size: larger;
+		padding: 0;
+		background-color: rgba(0, 0, 0, 0.1);
+		margin: 0;
+
+		:hover {
+			background-color: rgba(0, 0, 0, 0.2);
+		}
+	}
+}
+
+.tablepress-dt-scroll-buttons-wrapper:not(.tablepress-dt-scroll-buttons-wrapper-visible) .tablepress-dt-scroll-button {
+	display: none;
+}

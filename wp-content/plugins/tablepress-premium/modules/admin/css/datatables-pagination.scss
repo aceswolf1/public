@@ -1,0 +1,59 @@
+/**
+ * CSS code for "DataTables Pagination Settings" module on the "Edit" screen.
+ *
+ * @package TablePress
+ * @subpackage Modules
+ * @author Tobias Bäthge
+ * @since 3.0.0
+ */
+
+/* Default toggle variable for LTR and RTL CSS. */
+$direction: "ltr" !default;
+
+/* Import DataTables pagination code. */
+@use "../../../css/default-datatables-pagination" with ($direction: $direction);
+
+/* Default variables for the LTR CSS. */
+$align-side: left;
+$align-side-opposite: right;
+
+/* Variables for the RTL CSS. */
+@if "rtl" == $direction {
+	$align-side: right;
+	$align-side-opposite: left;
+}
+
+#tablepress_edit-datatables-pagination {
+	@include default-datatables-pagination.dt-paging;
+
+	.dt-paging {
+		border: 1px solid #dddddd;
+		border-radius: 2px;
+		padding: 5px;
+		height: 32px;
+
+		.dt-paging-button-wrapper {
+			display: inline-block;
+		}
+
+		.dt-paging-input {
+			display: inline-block;
+			margin: 0 0.25em;
+			vertical-align: middle;
+
+			input {
+				pointer-events: none;
+			}
+		}
+
+		.dt-input {
+			display: inline;
+			font-size: inherit;
+			padding: 5px;
+			width: 3ch;
+			text-align: center;
+			line-height: normal;
+			vertical-align: baseline;
+		}
+	}
+}

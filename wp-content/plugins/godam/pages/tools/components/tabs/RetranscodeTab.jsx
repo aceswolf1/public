@@ -1,0 +1,678 @@
+/**
+ * External dependencies
+ */
+import axios from 'axios';
+
+/**
+ * WordPress dependencies
+ */
+import {
+	Button,
+	Panel,
+	PanelBody,
+	Notice,
+	SelectControl,
+} from '@wordpress/components';
+import { __, sprintf } from '@wordpress/i18n';
+import { useState, useRef, useEffect, useMemo } from '@wordpress/element';
+/**
+ * Internal dependencies
+ */
+import ProgressBar from '../ProgressBar.jsx';
+import { scrollToTop } from '../../../godam/utils';
+import { SUPPORTED_DOCUMENT_EXTENSIONS } from '../../../../assets/src/blocks/godam-pdf/constants';
+
+const DEFAULT_MEDIA_TYPE = 'video';
+
+/**
+ * Media types that can be sent for transcoding.
+ *
+ * Keep the values in sync with the `media_type` enum on the
+ * `godam/v1/transcoding/not-transcoded` REST route.
+ */
+const MEDIA_TYPE_OPTIONS = [
+	{ value: 'all', label: __( 'All media', 'godam' ) },
+	{ value: 'video', label: __( 'Video', 'godam' ) },
+	{ value: 'audio', label: __( 'Audio', 'godam' ) },
+	{ value: 'document', label: __( 'Document', 'godam' ) },
+	{ value: 'image', label: __( 'Image', 'godam' ) },
+];
+
+/**
+ * Human-readable list of the formats the Document option covers.
+ *
+ * Read from the block's shared constants rather than spelled out here: nothing about the
+ * label "Document" tells you it also means .txt and .csv, and a hardcoded list would be a
+ * third copy to keep in step with rtgodam_get_supported_document_types().
+ */
+const DOCUMENT_FORMAT_LIST = SUPPORTED_DOCUMENT_EXTENSIONS
+	.map( ( extension ) => extension.toUpperCase() )
+	.join( ', ' );
+
+/**
+ * Get the translated label for a media type value.
+ *
+ * @param {string} value Media type value.
+ * @return {string} Translated label, or the raw value if it is not a known type.
+ */
+const getMediaTypeLabel = ( value ) =>
+	MEDIA_TYPE_OPTIONS.find( ( option ) => option.value === value )?.label ?? value;
+
+const RetranscodeTab = () => {
+	const [ fetchingMedia, setFetchingMedia ] = useState( false );
+	const [ retranscoding, setRetranscoding ] = useState( false );
+	const [ attachments, setAttachments ] = useState( [] );
+	const [ mediaCount, setMediaCount ] = useState( 0 );
+	const [ aborted, setAborted ] = useState( false );
+	const [ logs, setLogs ] = useState( [] );
+	const [ done, setDone ] = useState( false );
+	const [ forceRetranscode, setForceRetranscode ] = useState( false );
+	const [ mediaType, setMediaType ] = useState( DEFAULT_MEDIA_TYPE );
+	const [ selectedIds, setSelectedIds ] = useState( null );
+	const [ successCount, setSuccessCount ] = useState( 0 );
+	const [ failureCount, setFailureCount ] = useState( 0 );
+	const [ virtualMediaCount, setVirtualMediaCount ] = useState( 0 );
+	const [ skippedCount, setSkippedCount ] = useState( 0 );
+	const [ totalMediaCount, setTotalMediaCount ] = useState( 0 );
+	const [ selectedTranscodeCount, setSelectedTranscodeCount ] = useState( 0 );
+	const [ selectedRetranscodeCount, setSelectedRetranscodeCount ] = useState( 0 );
+	const [ notice, setNotice ] = useState( { message: '', status: 'success', isVisible: false } );
+
+	/*
+	 * The fetch options only apply to fetching media by type. They are irrelevant once
+	 * media has been fetched, and when specific IDs arrive from the Media Library.
+	 */
+	const showFetchOptions = ! ( selectedIds?.length > 0 ) && attachments.length === 0;
+
+	// Documents get their format list spelled out; the other types are self-explanatory.
+	const mediaTypeHelp = 'document' === mediaType
+		? sprintf(
+			// translators: %s is a comma-separated list of file extensions, e.g. "PDF, DOCX".
+			__( 'Fetches %s files. GoDAM converts each one to a preview PDF.', 'godam' ),
+			DOCUMENT_FORMAT_LIST,
+		)
+		: __( 'Choose which type of media to fetch for transcoding.', 'godam' );
+
+	// Calculate storage exceeded status reactively
+	const storageExceeded = useMemo( () => {
+		const userData = window?.userData || {};
+		const storageUsed = Number( userData.storageUsed || 0 );
+		const totalStorage = Number( userData.totalStorage || 0 );
+		return storageUsed > totalStorage;
+	}, [] );
+
+	// On mount, check for 'media_ids' in the URL and storage limits
+	useEffect( () => {
+		const params = new URLSearchParams( window.location.search );
+		const idsParam = params.get( 'media_ids' );
+		const nonce = params.get( '_wpnonce' );
+
+		// Verify the nonce if media_ids are present
+		if ( idsParam && nonce ) {
+			// Process the IDs only if we have a valid nonce from the URL
+			if ( nonce === window.easydamMediaLibrary?.godamToolsNonce ) {
+				const idsArr = idsParam.split( ',' ).map( ( id ) => parseInt( id, 10 ) ).filter( Boolean );
+				if ( idsArr.length > 0 ) {
+					setAttachments( idsArr );
+					setSelectedIds( idsArr );
+				}
+			} else {
+				showNotice( __( 'The requested operation is not allowed. The nonce provided in the URL is invalid or expired.', 'godam' ), 'error' );
+			}
+		}
+	}, [] );
+
+	// Whenever selectedIds are provided, set forceRetranscode to false and check transcoding status
+	useEffect( () => {
+		if ( selectedIds && selectedIds.length > 0 ) {
+			setForceRetranscode( false );
+
+			// Check status of selected IDs
+			axios.get(
+				`${ window.godamRestRoute?.url }godam/v1/transcoding/check-transcoded-status?ids=${ selectedIds.join( ',' ) }`,
+				{
+					headers: {
+						'Content-Type': 'application/json',
+						'X-WP-Nonce': window.godamRestRoute?.nonce,
+					},
+				} )
+				.then( ( response ) => {
+					const transcodeCount = response.data?.transcode_count || 0;
+					const retranscodeCount = response.data?.retranscode_count || 0;
+					setSelectedTranscodeCount( transcodeCount );
+					setSelectedRetranscodeCount( retranscodeCount );
+
+					// Create detailed message
+					let message = '';
+					if ( transcodeCount > 0 ) {
+						message += sprintf(
+							// translators: %d is the number of selected media files to be transcoded.
+							__( '%d selected media file(s) will be transcoded.', 'godam' ),
+							transcodeCount,
+						);
+					}
+					if ( retranscodeCount > 0 ) {
+						if ( message ) {
+							message += ' ';
+						}
+						message += sprintf(
+							// translators: %d is the number of selected media files to be retranscoded.
+							__( '%d selected media file(s) will be retranscoded.', 'godam' ),
+							retranscodeCount,
+						);
+					}
+
+					showNotice( message, 'warning' );
+				} )
+				.catch( () => {
+					// Fallback if check fails - assume all need transcoding
+					setSelectedTranscodeCount( selectedIds.length );
+					setSelectedRetranscodeCount( 0 );
+
+					showNotice(
+						sprintf(
+							// translators: %d is the number of selected media files to be transcoded.
+							__( '%d selected media file(s) will be transcoded.', 'godam' ),
+							selectedIds.length,
+						),
+						'warning',
+					);
+				} );
+		}
+	}, [ selectedIds ] );
+
+	// Use a ref to track if the operation should be aborted.
+	const abortRef = useRef( false );
+
+	const fetchRetranscodeMedia = () => {
+		setFetchingMedia( true );
+
+		const params = new URLSearchParams( { media_type: mediaType } );
+
+		// Add force param if checkbox is checked
+		if ( forceRetranscode ) {
+			params.set( 'force', '1' );
+		}
+
+		const url = `${ window.godamRestRoute?.url }godam/v1/transcoding/not-transcoded?${ params.toString() }`;
+
+		axios.get( url, {
+			headers: {
+				'Content-Type': 'application/json',
+				'X-WP-Nonce': window.godamRestRoute?.nonce,
+			},
+		} )
+			.then( ( response ) => {
+				// The type the server actually queried, which may differ if it fell back to the default.
+				const fetchedMediaType = response.data?.media_type ?? mediaType;
+
+				if ( response.data?.storage_exceeded ) {
+					showNotice( response.data.message, 'error' );
+				} else if ( Array.isArray( response.data?.data ) && response.data.data.length > 0 ) {
+					setAttachments( response.data.data );
+					if ( response.data?.total_media_count ) {
+						setTotalMediaCount( response.data.total_media_count );
+					}
+				} else if ( 'all' === fetchedMediaType ) {
+					showNotice( __( 'No media files found for retranscoding. Please ensure you have media files that require retranscoding.', 'godam' ), 'info' );
+				} else {
+					showNotice(
+						sprintf(
+							// translators: %s is the selected media type label, e.g. Video.
+							__( 'No media files of the selected type (%s) found for retranscoding. Please ensure you have media files of this type that require retranscoding.', 'godam' ),
+							getMediaTypeLabel( fetchedMediaType ),
+						),
+						'info',
+					);
+				}
+			} )
+			.catch( ( err ) => {
+				showNotice(
+					sprintf(
+						// translators: %s is the error message.
+						__( 'Failed to fetch media for retranscoding: %s', 'godam' ),
+						err.response ? err.response.data.message : err.message,
+					),
+					'error',
+				);
+			} )
+			.finally( () => {
+				setFetchingMedia( false );
+				setSuccessCount( 0 );
+				setFailureCount( 0 );
+			} );
+	};
+
+	const abortRetranscoding = () => {
+		abortRef.current = true;
+		setAborted( true );
+		setRetranscoding( false );
+		setLogs( ( prevLogs ) => [ ...prevLogs, __( 'Aborting operation to send media for retranscoding.', 'godam' ) ] );
+	};
+
+	const startRetranscoding = async () => {
+		if ( attachments?.length > 0 ) {
+			setRetranscoding( true );
+			setAborted( false );
+			setMediaCount( 0 );
+			setLogs( [] );
+			setDone( false );
+			abortRef.current = false;
+			setSuccessCount( 0 );
+			setFailureCount( 0 );
+			setVirtualMediaCount( 0 );
+			setSkippedCount( 0 );
+
+			for ( let i = 0; i < attachments.length; i++ ) {
+				// Check if abort was requested.
+				if ( abortRef.current ) {
+					break;
+				}
+
+				const attachment = attachments[ i ];
+
+				try {
+					const url = `${ window.godamRestRoute?.url }godam/v1/transcoding/retranscode`;
+
+					const res = await axios.post( url, {
+						id: attachment,
+					}, {
+						headers: {
+							'Content-Type': 'application/json',
+							'X-WP-Nonce': window.godamRestRoute?.nonce,
+						},
+					} );
+
+					const data = res.data;
+
+					if ( data?.message ) {
+						// Log the message
+						setLogs( ( prevLogs ) => [ ...prevLogs, data.message ] );
+
+						// Handle different response types
+						if ( data.skipped === true ) {
+							if ( data.reason === 'virtual_media' || data.reason === 'migrated_vimeo' ) {
+								setVirtualMediaCount( ( prevCount ) => prevCount + 1 );
+							} else {
+								// Every other skip reason (unsupported_document, local_environment,
+								// storage_exceeded, http_auth_enabled) is still a file that was not
+								// sent, so tally it or the final summary undercounts the batch.
+								setSkippedCount( ( prevCount ) => prevCount + 1 );
+							}
+						} else if ( data.skipped === false && data.sent === true ) {
+							setSuccessCount( ( prevCount ) => prevCount + 1 );
+						}
+					}
+				} catch ( err ) {
+					// A dropped connection or restarted server rejects with no `err.response`;
+					// reading `.data` off that would throw inside the catch and strand the loop
+					// with its finishing setters unrun. Fall back to the transport-level message.
+					const message = err.response?.data?.message ?? err.message;
+					if ( message ) {
+						// Log the error message
+						setLogs( ( prevLogs ) => [ ...prevLogs, message ] );
+					}
+					setFailureCount( ( prevCount ) => prevCount + 1 );
+				} finally {
+					setMediaCount( ( prevCount ) => prevCount + 1 );
+				}
+			}
+
+			setRetranscoding( false );
+			setDone( true );
+
+			// Reset abort state after completion.
+			if ( abortRef.current ) {
+				setAborted( false );
+			}
+		}
+	};
+
+	const resetState = () => {
+		setAttachments( [] );
+		setMediaCount( 0 );
+		setAborted( false );
+		setRetranscoding( false );
+		setLogs( [] );
+		setDone( false );
+		setForceRetranscode( false );
+		setMediaType( DEFAULT_MEDIA_TYPE );
+		setSelectedIds( null );
+		setVirtualMediaCount( 0 );
+		setSkippedCount( 0 );
+		abortRef.current = false;
+
+		// Reset the URL to remove media_ids, goback and nonce
+		const url = new URL( window.location.href );
+		url.searchParams.delete( 'media_ids' );
+		url.searchParams.delete( '_wpnonce' );
+		url.searchParams.delete( 'goback' );
+		window.history.replaceState( {}, '', url.toString() );
+	};
+
+	const showNotice = ( message, status = 'success' ) => {
+		setNotice( { message, status, isVisible: true } );
+		if ( window.scrollY > 0 ) {
+			scrollToTop();
+		}
+	};
+
+	useEffect( () => {
+		// Show notice if retranscoding is done or aborted with counts
+		if ( done || aborted ) {
+			let message = '';
+			let noticeType = 'success';
+
+			// Handle virtual media warning first
+			if ( virtualMediaCount > 0 ) {
+				message = sprintf(
+					// translators: %d is the number of virtual media files found.
+					__( '%d virtual media file(s) found, which need to be retranscoded on GoDAM Central.', 'godam' ),
+					virtualMediaCount,
+				);
+			}
+
+			// Add success message if there were actual retranscoding requests
+			if ( successCount > 0 ) {
+				const successMessage = sprintf(
+					// translators: %d is the number of media files retranscoded.
+					__( 'Successfully sent %d media file(s) for retranscoding.', 'godam' ),
+					successCount,
+				);
+
+				if ( message ) {
+					message += ' ' + successMessage;
+				} else {
+					message = successMessage;
+				}
+			}
+
+			// Add failure message if there were failures
+			if ( failureCount > 0 ) {
+				const failureMessage = sprintf(
+					// translators: %d is the number of media files that failed to retranscode.
+					__( 'Failed to send %d media file(s) for retranscoding.', 'godam' ),
+					failureCount,
+				);
+
+				if ( message ) {
+					message += ' ' + failureMessage;
+				} else {
+					message = failureMessage;
+				}
+			}
+
+			// Add skipped message for files the server declined to send (unsupported document
+			// formats, local environment, storage limits, HTTP auth). Without this a batch made
+			// up entirely of skipped files falls through to the "nothing to retranscode" default,
+			// which contradicts the per-file log.
+			if ( skippedCount > 0 ) {
+				const skippedMessage = sprintf(
+					// translators: %d is the number of media files that were skipped.
+					__( '%d media file(s) were skipped and not sent for retranscoding.', 'godam' ),
+					skippedCount,
+				);
+
+				if ( message ) {
+					message += ' ' + skippedMessage;
+				} else {
+					message = skippedMessage;
+				}
+			}
+
+			// If no specific messages, show default
+			if ( ! message ) {
+				message = __( 'Operation completed without any media files to retranscode.', 'godam' );
+			}
+
+			// Determine notice type based on what happened
+			if ( failureCount > 0 ) {
+				noticeType = 'error';
+			} else if ( virtualMediaCount > 0 || skippedCount > 0 ) {
+				noticeType = 'warning';
+			} else if ( successCount > 0 ) {
+				noticeType = 'success';
+			}
+
+			showNotice( message, noticeType );
+		}
+	}, [ done, aborted, successCount, failureCount, virtualMediaCount, skippedCount ] );
+
+	return (
+		<>
+			<div className="status-notices-container">
+				{ notice.isVisible && (
+					<Notice
+						status={ notice.status }
+						className="my-2"
+						onRemove={ () => setNotice( { ...notice, isVisible: false } ) }
+					>
+						{ notice.message }
+					</Notice>
+				) }
+			</div>
+
+			<Panel header={ __( 'Retranscode Media', 'godam' ) } className="godam-panel">
+				<PanelBody opened>
+					<p>
+						{ __(
+							'This tool allows you to retranscode your media files. You can either retranscode specific files selected from the Media Library, or pick a media type below and fetch the files of that type that are not yet transcoded.',
+							'godam',
+						) }
+					</p>
+
+					<p>
+						{ __( 'Checking the "Force retranscode" option will retranscode all media files regardless of their current state.', 'godam' ) }
+					</p>
+
+					<p>
+						<i>
+							{ __(
+								'Note: Transcoding and retranscoding will use your bandwidth allowance. Use the force retranscode option carefully.',
+								'godam',
+							) }
+						</i>
+					</p>
+
+					{
+						storageExceeded && (
+							<div className="notice notice-error godam-storage-exceeded-notice">
+								<p>
+									<strong>{ __( 'Storage Limit Exceeded:', 'godam' ) }</strong>{ ' ' }
+									{ sprintf(
+										// translators: %s is the storage usage percentage.
+										__( 'Your storage usage has exceeded your plan limit (%s%%). Retranscoding is currently blocked. Please upgrade your plan to continue.', 'godam' ),
+										( ( Number( window?.userData?.storageUsed || 0 ) / Math.max( 1, Number( window?.userData?.totalStorage || 0 ) ) ) * 100 ).toFixed( 1 ),
+									) }
+								</p>
+							</div>
+						)
+					}
+
+					{
+						/* Media type selector and force retranscode option. */
+						showFetchOptions &&
+						<div className="godam-retranscode-options">
+							<div className="godam-retranscode-options__media-type">
+								<SelectControl
+									__next40pxDefaultSize
+									__nextHasNoMarginBottom
+									label={ __( 'Media type', 'godam' ) }
+									help={ mediaTypeHelp }
+									value={ mediaType }
+									options={ MEDIA_TYPE_OPTIONS }
+									onChange={ setMediaType }
+									disabled={ fetchingMedia }
+								/>
+							</div>
+
+							{ /* eslint-disable-next-line jsx-a11y/label-has-associated-control */ }
+							<label className="godam-retranscode-options__force">
+								<input
+									type="checkbox"
+									checked={ forceRetranscode }
+									onChange={ ( e ) => setForceRetranscode( e.target.checked ) }
+									disabled={ fetchingMedia }
+								/>
+								{ __( 'Force retranscode (even if already transcoded)', 'godam' ) }
+							</label>
+						</div>
+					}
+
+					{
+						fetchingMedia &&
+						<div className="flex items-center gap-4 my-5 text-lg text-gray-500">
+							<div className="flex" role="status">
+								<svg aria-hidden="true" className="w-5 h-5 text-gray-200 animate-spin dark:text-gray-600 godam-accent-spinner" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">
+									<path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor" />
+									<path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill" />
+								</svg>
+								<span className="sr-only">fetchingMedia...</span>
+							</div>
+
+							<span>{ __( 'Fetching media that require retranscoding…', 'godam' ) }</span>
+						</div>
+					}
+
+					{
+						attachments?.length > 0 &&
+						! done &&
+						! aborted &&
+						<div className="my-5 text-lg text-gray-600">
+							{ selectedIds && selectedIds.length > 0 && (
+								<div className="space-y-1">
+									{ ( selectedTranscodeCount > 0 || selectedRetranscodeCount > 0 ) && (
+										<p>
+											{ ( () => {
+												const parts = [];
+												if ( selectedTranscodeCount > 0 ) {
+													parts.push(
+														sprintf(
+															// translators: %d is the number of untranscoded media files.
+															__( '%d untranscoded media file(s) selected', 'godam' ),
+															selectedTranscodeCount,
+														),
+													);
+												}
+												if ( selectedRetranscodeCount > 0 ) {
+													parts.push(
+														sprintf(
+															// translators: %d is the number of transcoded media files.
+															__( '%d transcoded media file(s) selected', 'godam' ),
+															selectedRetranscodeCount,
+														),
+													);
+												}
+												return parts.join( ', ' );
+											} )() }
+										</p>
+									) }
+								</div>
+							) }
+							{ ! selectedIds && ! forceRetranscode && sprintf(
+								// translators: 1: number of media files that require retranscoding, 2: total number of media files.
+								__( '%1$d/%2$d media file(s) require retranscoding.', 'godam' ),
+								attachments.length,
+								totalMediaCount,
+							) }
+							{ forceRetranscode && sprintf(
+								// translators: 1: number of media files that will be retranscoded regardless of their current state, 2: total number of media files.
+								__( '%1$d/%2$d media file(s) will be retranscoded regardless of their current state.', 'godam' ),
+								attachments.length,
+								totalMediaCount,
+							) }
+						</div>
+					}
+
+					{
+						retranscoding &&
+						// Show x/y media retranscoded.
+						<span className="text-gray-600">
+							{ sprintf(
+								// translators: 1: number of media files sent for retranscoding, 2: total number of media files selected.
+								__( '%1$d/%2$d media files sent for retranscoding…', 'godam' ),
+								mediaCount,
+								attachments.length,
+							) }
+						</span>
+					}
+
+					{
+						( retranscoding || aborted || done ) &&
+						<div className="mb-4">
+							<ProgressBar total={ attachments?.length } done={ mediaCount } />
+							<pre className="w-full h-[120px] max-h-[120px] overflow-y-auto bg-gray-100 p-3 rounded whitespace-break-spaces">
+								{ logs.map( ( log, index ) => (
+									<div key={ index } className="text-sm text-gray-700">
+										• { log }
+									</div>
+								) ) }
+							</pre>
+						</div>
+					}
+
+					<div className="flex gap-2">
+						{
+							// Show main action button.
+							! retranscoding &&
+							<Button
+								variant="primary"
+								onClick={ () => {
+									if ( attachments.length > 0 ) {
+										startRetranscoding();
+									} else {
+										fetchRetranscodeMedia();
+									}
+								} }
+								disabled={ fetchingMedia || storageExceeded }
+							>
+								{ ( () => {
+									if ( attachments.length === 0 ) {
+										return __( 'Fetch Media', 'godam' );
+									} else if ( ! done && ! aborted ) {
+										// If we have selected media and all are untranscoded, show "Start Transcoding"
+										if ( selectedIds && selectedRetranscodeCount === 0 && selectedTranscodeCount > 0 ) {
+											return __( 'Start Transcoding', 'godam' );
+										}
+										return __( 'Start Retranscoding', 'godam' );
+									}
+									// If we have selected media and all are untranscoded, show "Restart Transcoding"
+									if ( selectedIds && selectedRetranscodeCount === 0 && selectedTranscodeCount > 0 ) {
+										return __( 'Restart Transcoding', 'godam' );
+									}
+									return __( 'Restart Retranscoding', 'godam' );
+								} )() }
+							</Button>
+						}
+
+						{
+							// Show abort button during retranscoding.
+							retranscoding &&
+							<Button
+								variant="secondary"
+								isDestructive
+								onClick={ abortRetranscoding }
+							>
+								{ __( 'Abort Operation', 'godam' ) }
+							</Button>
+						}
+
+						{
+							// Show reset button after completion or abort or after fetching media.
+							( aborted || ( ! retranscoding && attachments.length > 0 ) ) &&
+							<Button
+								variant="tertiary"
+								onClick={ resetState }
+							>
+								{ __( 'Reset', 'godam' ) }
+							</Button>
+						}
+					</div>
+
+				</PanelBody>
+			</Panel>
+		</>
+	);
+};
+
+export default RetranscodeTab;

@@ -1,0 +1,40 @@
+.breadcrumbs {
+	background: #fff;
+	// border-bottom: 1px solid #ddd;
+	padding: .7em 0;
+	font-size: .8em;
+	color: #999;
+	margin-bottom: 30px;
+
+	.flex {
+		justify-content: flex-start;
+		align-items: center;
+	}
+
+	span,
+	a {
+		margin-right: 16px;
+		text-decoration: none;
+	}
+
+	a:hover {
+		text-decoration: underline;
+	}
+
+	&__arrow {
+		font-size: .7em;
+		color: #ccc;
+	}
+
+	&__home {
+		color: #ccc !important;
+
+		&:hover {
+			color: lighten($primary, 30%) !important;
+		}
+	}
+
+	&__current-page {
+		color: #333 !important;
+	}
+}

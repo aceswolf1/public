@@ -1,0 +1,455 @@
+/**
+ * External dependencies
+ */
+import { createSlice } from '@reduxjs/toolkit';
+
+let selectedFolderId = -1;
+
+const urlParams = new URLSearchParams( window.location.search );
+const folderId = urlParams.get( 'media-folder' );
+
+if ( folderId ) {
+	switch ( folderId.toLowerCase() ) {
+		case 'all':
+			selectedFolderId = -1;
+			break;
+		case 'uncategorized':
+			selectedFolderId = 0;
+			break;
+		default:
+			selectedFolderId = parseInt( folderId, 10 );
+			break;
+	}
+}
+
+const slice = createSlice( {
+	name: 'folder',
+	initialState: {
+		folders: [],
+		bookmarks: [],
+		lockedFolders: [],
+		selectedFolder: {
+			id: selectedFolderId,
+		},
+
+		page: {
+			current: 1,
+			perPage: 10,
+			totalPages: 1, // Default to 1; update when real data is loaded.
+		},
+
+		modals: {
+			folderCreation: false,
+			rename: false,
+			delete: false,
+		},
+
+		currentContextMenuFolder: null,
+
+		snackbar: {
+			message: '',
+			type: 'success',
+		},
+		isMultiSelecting: false,
+		multiSelectedFolderIds: [],
+
+		sortOrder: 'name-asc',
+	},
+	reducers: {
+		changeSelectedFolder: ( state, action ) => {
+			state.selectedFolder = action.payload.item;
+			window.godam = window.godam || {};
+			window.godam.selectedFolder = action.payload.item;
+		},
+		openModal: ( state, action ) => {
+			const modalName = action.payload;
+			if ( state.modals.hasOwnProperty( modalName ) ) {
+				state.modals[ modalName ] = true;
+			}
+		},
+		closeModal: ( state, action ) => {
+			const modalName = action.payload;
+			if ( state.modals.hasOwnProperty( modalName ) ) {
+				state.modals[ modalName ] = false;
+			}
+		},
+		updateSnackbar: ( state, action ) => {
+			state.snackbar.message = action.payload.message;
+			state.snackbar.type = action.payload.type;
+		},
+		toggleOpenClose: ( state, action ) => {
+			const folder = state.folders.find( ( item ) => item.id === action.payload.id );
+
+			if ( folder ) {
+				folder.isOpen = ! folder.isOpen;
+			}
+		},
+		createFolder: ( state, action ) => {
+			const { name } = action.payload;
+			const newItem = {
+				id: action.payload.id,
+				name,
+				isOpen: false,
+				children: [],
+				parent: action.payload.parent,
+			};
+
+			state.folders.push( newItem );
+		},
+		renameFolder: ( state, action ) => {
+			if ( ! state.currentContextMenuFolder ) {
+				return;
+			}
+
+			const id = state.currentContextMenuFolder.id;
+			const name = action.payload.name;
+
+			const folder = state.folders.find( ( item ) => item.id === id );
+
+			if ( folder ) {
+				folder.name = name;
+			}
+
+			// The Bookmark/Locked tabs and the current selection hold separate copies of the
+			// folder, so update them too — otherwise a rename shows stale names in those views.
+			const bookmarked = state.bookmarks.find( ( item ) => item.id === id );
+			if ( bookmarked ) {
+				bookmarked.name = name;
+			}
+
+			const locked = state.lockedFolders.find( ( item ) => item.id === id );
+			if ( locked ) {
+				locked.name = name;
+			}
+
+			if ( state.selectedFolder && state.selectedFolder.id === id ) {
+				state.selectedFolder.name = name;
+			}
+
+			// The rename modal renders currentContextMenuFolder.name, so keep it current too.
+			if ( state.currentContextMenuFolder && state.currentContextMenuFolder.id === id ) {
+				state.currentContextMenuFolder.name = name;
+			}
+		},
+		deleteFolder: ( state ) => {
+			if ( ! state.currentContextMenuFolder && ! state.isMultiSelecting ) {
+				return;
+			}
+
+			const idsToDelete = new Set();
+
+			function findChildren( id ) {
+				idsToDelete.add( id );
+				state.folders.forEach( ( item ) => {
+					if ( item.parent === id ) {
+						findChildren( item.id );
+					}
+				} );
+			}
+
+			if ( state.isMultiSelecting ) {
+				state.multiSelectedFolderIds.forEach( ( id ) => {
+					findChildren( id );
+				} );
+			} else {
+				findChildren( state.currentContextMenuFolder.id );
+			}
+
+			state.folders = state.folders.filter( ( item ) => ! idsToDelete.has( item.id ) );
+
+			// Keep the bookmark/locked tab lists in sync so deleted folders don't linger there.
+			state.bookmarks = state.bookmarks.filter( ( item ) => ! idsToDelete.has( item.id ) );
+			state.lockedFolders = state.lockedFolders.filter( ( item ) => ! idsToDelete.has( item.id ) );
+
+			// If the selected folder was deleted (or was a descendant of a deleted folder),
+			// reset the selection to "All" — otherwise the grid keeps filtering by a folder
+			// that no longer exists.
+			if ( state.selectedFolder && idsToDelete.has( state.selectedFolder.id ) ) {
+				state.selectedFolder = { id: -1 };
+
+				// Mirror to the global the way changeSelectedFolder does, creating it if
+				// it doesn't exist yet so the reset isn't silently dropped.
+				window.godam = window.godam || {};
+				window.godam.selectedFolder = state.selectedFolder;
+			}
+
+			state.currentContextMenuFolder = {
+				id: -1,
+			};
+
+			state.isMultiSelecting = false;
+			state.multiSelectedFolderIds = [];
+		},
+		setTree: ( state, action ) => {
+			const payload = action.payload;
+
+			// Backward compatible: an array payload keeps the legacy merge/append behavior
+			// (drag-reorder / count updates always pass the full current list). An object
+			// payload `{ folders, replace }` lets callers REPLACE the list so removals are
+			// reflected. The merge branch can only add/update — it never removes — so a
+			// deleted folder used to reappear (whenever this ran with the still-cached query
+			// data) and only cleared on a hard refresh, where state started empty.
+			const newFolders = Array.isArray( payload ) ? payload : ( payload?.folders || [] );
+			const replace = ! Array.isArray( payload ) && Boolean( payload?.replace );
+
+			if ( replace || state.folders.length === 0 ) {
+				// Sort a mutable copy: `newFolders` comes straight from the RTK Query cache,
+				// which is frozen (read-only), so sorting it in place throws. The server
+				// always returns name ASC; re-applying the active sort keeps a "By Name (Z-A)"
+				// selection from silently resetting to A-Z when the list is replaced.
+				const sorted = [ ...newFolders ];
+
+				if ( 'name-desc' === state.sortOrder ) {
+					sorted.sort( ( a, b ) => a.name.localeCompare( b.name ) * -1 );
+				} else if ( 'name-asc' === state.sortOrder ) {
+					sorted.sort( ( a, b ) => a.name.localeCompare( b.name ) );
+				}
+
+				state.folders = sorted;
+				return;
+			}
+
+			const folderMap = new Map( state.folders.map( ( folder ) => [ folder.id, folder ] ) );
+
+			newFolders.forEach( ( folder ) => {
+				if ( folderMap.has( folder.id ) ) {
+					// Update existing folder
+					Object.assign( folderMap.get( folder.id ), folder );
+				} else {
+					// Add new folder
+					state.folders.push( folder );
+				}
+			} );
+		},
+
+		toggleMultiSelectMode: ( state ) => {
+			state.isMultiSelecting = ! state.isMultiSelecting;
+			if ( ! state.isMultiSelecting ) {
+				state.multiSelectedFolderIds = [];
+			}
+		},
+		addMultiSelectedFolder: ( state, action ) => {
+			const folderIdToAdd = action.payload.id;
+			if ( ! state.multiSelectedFolderIds.includes( folderIdToAdd ) ) {
+				state.multiSelectedFolderIds.push( folderIdToAdd );
+			}
+		},
+		removeMultiSelectedFolder: ( state, action ) => {
+			const folderIdToRemove = action.payload.id;
+			state.multiSelectedFolderIds = state.multiSelectedFolderIds.filter(
+				( id ) => id !== folderIdToRemove,
+			);
+		},
+		toggleMultiSelectedFolder: ( state, action ) => {
+			const folderIdToToggle = action.payload.id;
+			if ( state.multiSelectedFolderIds.includes( folderIdToToggle ) ) {
+				state.multiSelectedFolderIds = state.multiSelectedFolderIds.filter(
+					( id ) => id !== folderIdToToggle,
+				);
+			} else {
+				state.multiSelectedFolderIds.push( folderIdToToggle );
+			}
+		},
+		clearMultiSelectedFolders: ( state ) => {
+			state.multiSelectedFolderIds = [];
+		},
+		setSortOrder: ( state, action ) => {
+			state.sortOrder = action.payload;
+			state.folders.sort( ( a, b ) => {
+				if ( state.sortOrder === 'name-asc' ) {
+					return a.name.localeCompare( b.name );
+				} else if ( state.sortOrder === 'name-desc' ) {
+					return b.name.localeCompare( a.name );
+				}
+				return 0;
+			} );
+		},
+		lockFolder: ( state, action ) => {
+			const { ids, status } = action.payload;
+
+			if ( ! Array.isArray( ids ) ) {
+				const folder = state.folders.find( ( item ) => item.id === action.payload );
+
+				if ( folder ) {
+					if ( ! folder.meta ) {
+						folder.meta = {};
+					}
+
+					folder.meta.locked = ! Boolean( folder.meta?.locked );
+
+					if ( state.selectedFolder && state.selectedFolder.id === folder.id ) {
+						window.godam = window.godam || {};
+						window.godam.selectedFolder = { ...state.selectedFolder, meta: { ...state.selectedFolder.meta, locked: folder.meta.locked } };
+					}
+
+					if ( state?.selectedFolder?.meta ) {
+						state.selectedFolder.meta.locked = folder.meta.locked;
+					}
+
+					if ( ! folder.meta.locked ) {
+						state.lockedFolders = state.lockedFolders.filter( ( item ) => item.id !== folder.id );
+					} else {
+						state.lockedFolders.push( folder );
+					}
+				}
+			} else {
+				ids.forEach( ( id ) => {
+					const folder = state.folders.find( ( item ) => item.id === id );
+					if ( folder ) {
+						if ( ! folder.meta ) {
+							folder.meta = {};
+						}
+						folder.meta.locked = status;
+
+						if ( state.selectedFolder && state.selectedFolder.id === folder.id ) {
+							window.godam = window.godam || {};
+							window.godam.selectedFolder = { ...state.selectedFolder, meta: { ...state.selectedFolder.meta, locked: folder.meta.locked } };
+						}
+
+						if ( status ) {
+							state.lockedFolders.push( folder );
+						} else {
+							state.lockedFolders = state.lockedFolders.filter( ( item ) => item.id !== folder.id );
+						}
+					}
+				} );
+			}
+		},
+		updateBookmarks: ( state, action ) => {
+			const { ids, status } = action.payload;
+
+			if ( ! Array.isArray( ids ) ) {
+				const folder = state.folders.find( ( item ) => item.id === action.payload );
+
+				if ( folder ) {
+					if ( ! folder.meta ) {
+						folder.meta = {};
+					}
+
+					folder.meta.bookmark = ! Boolean( folder.meta?.bookmark );
+
+					if ( ! folder.meta.bookmark ) {
+						state.bookmarks = state.bookmarks.filter( ( item ) => item.id !== folder.id );
+					} else {
+						state.bookmarks.push( folder );
+					}
+				}
+			} else {
+				ids.forEach( ( id ) => {
+					const folder = state.folders.find( ( item ) => item.id === id );
+					if ( folder ) {
+						if ( ! folder.meta ) {
+							folder.meta = {};
+						}
+						folder.meta.bookmark = status;
+
+						if ( status ) {
+							state.bookmarks.push( folder );
+						} else {
+							state.bookmarks = state.bookmarks.filter( ( item ) => item.id !== folder.id );
+						}
+					}
+				} );
+			}
+		},
+		expandParents: ( state, action ) => {
+			const _folderId = action.payload.id;
+			let currentFolder = state.folders.find( ( item ) => item.id === _folderId );
+
+			while ( currentFolder && currentFolder.parent !== 0 ) {
+				const parentFolder = state.folders.find( ( item ) => item.id === currentFolder.parent );
+				if ( parentFolder ) {
+					parentFolder.isOpen = true;
+					currentFolder = parentFolder;
+				} else {
+					break;
+				}
+			}
+		},
+		initializeBookmarks: ( state, action ) => {
+			const bookmarks = action.payload || [];
+			state.bookmarks = bookmarks;
+		},
+		initializeLockedFolders: ( state, action ) => {
+			const lockedFolders = action.payload || [];
+			state.lockedFolders = lockedFolders;
+		},
+		updatePage: ( state, action ) => {
+			const { current, totalPages, perPage } = action.payload;
+			state.page = {
+				current: current ?? state.page.current,
+				perPage: perPage ?? state.page.perPage,
+				totalPages: totalPages ?? state.page.totalPages,
+			};
+		},
+		setCurrentContextMenuFolder: ( state, action ) => {
+			state.currentContextMenuFolder = action.payload;
+		},
+		/**
+		 * Reset UI-related state when a media modal is closed.
+		 * Preserves folders data, bookmarks, and other persistent data for performance.
+		 *
+		 * @param {Object} state Current slice state
+		 */
+		resetUIState: ( state ) => {
+			// Reset selected folder to 'All'
+			state.selectedFolder = {
+				id: -1,
+			};
+
+			// Close all modals
+			state.modals = {
+				folderCreation: false,
+				rename: false,
+				delete: false,
+			};
+
+			// Reset multi-selection state
+			state.isMultiSelecting = false;
+			state.multiSelectedFolderIds = [];
+
+			// Clear context menu state
+			state.currentContextMenuFolder = null;
+
+			// Clear snackbar
+			state.snackbar = {
+				message: '',
+				type: 'success',
+			};
+
+			// NOTE: page.current is intentionally NOT reset here. We preserve the loaded
+			// folders (and bookmarks/lockedFolders/sortOrder) across modal open/close for
+			// performance and UX — resetting the page to 1 while keeping those folders made
+			// the sync effect re-fetch page 1 and REPLACE the tree with just the first page,
+			// collapsing everything the user had loaded via "Load more".
+		},
+	},
+} );
+
+export const {
+	changeSelectedFolder,
+	openModal,
+	closeModal,
+	updateSnackbar,
+	toggleOpenClose,
+	createFolder,
+	renameFolder,
+	deleteFolder,
+	setTree,
+	toggleMultiSelectMode,
+	addMultiSelectedFolder,
+	removeMultiSelectedFolder,
+	toggleMultiSelectedFolder,
+	clearMultiSelectedFolders,
+	setSortOrder,
+	lockFolder,
+	updateBookmarks,
+	initializeBookmarks,
+	initializeLockedFolders,
+	updatePage,
+	expandParents,
+	setCurrentContextMenuFolder,
+	resetUIState,
+} = slice.actions;
+
+export default slice.reducer;
