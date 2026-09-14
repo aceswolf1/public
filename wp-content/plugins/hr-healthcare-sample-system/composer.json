@@ -1,0 +1,33 @@
+{
+	"name": "hr-healthcare/hr-healthcare-sample-system",
+	"description": "HR Healthcare Sample System — WordPress plugin for sample request cart",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=8.1",
+		"phpoffice/phpspreadsheet": "^2.0"
+	},
+	"require-dev": {
+		"wp-coding-standards/wpcs": "^3.0",
+		"phpcompatibility/phpcompatibility-wp": "*",
+		"dealerdirect/phpcodesniffer-composer-installer": "*"
+	},
+	"autoload": {
+		"psr-4": {
+			"HR_Healthcare\\Sample_System\\": "src/"
+		}
+	},
+	"scripts": {
+		"lint": "phpcs",
+		"lint:fix": "phpcbf"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		},
+		"sort-packages": true,
+		"platform": {
+			"php": "8.1"
+		}
+	}
+}

@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<ruleset name="HR Healthcare Sample System">
+	<description>WordPress Coding Standards + PHPCompatibility for PHP 8.1+.</description>
+
+	<file>./hr-healthcare-sample-system.php</file>
+	<file>./uninstall.php</file>
+	<file>./src</file>
+
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/assets/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+
+	<arg name="basepath" value="."/>
+	<arg name="extensions" value="php"/>
+	<arg name="parallel" value="8"/>
+	<arg value="sp"/>
+	<arg name="colors"/>
+
+	<config name="testVersion" value="8.1-"/>
+	<config name="minimum_supported_wp_version" value="6.0"/>
+
+	<rule ref="WordPress"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="hrh_sample"/>
+				<element value="HRH_SAMPLE"/>
+				<element value="HR_Healthcare"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="hr-healthcare-sample-system"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- PSR-4 class files use ClassName.php, not class-*.php. -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude name="WordPress.Files.FileName.NotHyphenatedLowercase"/>
+		<exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+	</rule>
+
+	<!-- Data layer is the intentional $wpdb repository boundary. -->
+	<rule ref="WordPress.DB.DirectDatabaseQuery.DirectQuery">
+		<exclude-pattern>*/src/Data/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.DirectDatabaseQuery.NoCaching">
+		<exclude-pattern>*/src/Data/*</exclude-pattern>
+	</rule>
+</ruleset>

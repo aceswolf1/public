@@ -148,6 +148,41 @@ export function availableValues(config, propKey, currentOptions = {}) {
 }
 
 /**
+ * Smart auto-switch: apply a pick of `value` on `axis`, keeping as many of the
+ * user's other selections as stay valid and silently dropping ones that no
+ * longer fit. Guarantees the returned selection matches >=1 combination
+ * (assuming `value` exists in the config, which rendered tiles always do), so
+ * the user is never trapped: picking any tile is always a legal move.
+ *
+ * @param {GroupConfig} config
+ * @param {Record<string, string>} current Existing selection.
+ * @param {string} axis Property key just picked.
+ * @param {string} value Value key just picked.
+ * @returns {Record<string, string>} Reconciled selection (new object).
+ */
+export function reconcileSelection(config, current = {}, axis, value) {
+	let next = { [axis]: value };
+
+	// Preserve prior picks on other axes when they remain reachable together
+	// with the new pick; drop the ones that conflict (config order = priority).
+	selectableKeys(config).forEach((key) => {
+		if (key === axis) {
+			return;
+		}
+		const prev = current[key];
+		if (!prev) {
+			return;
+		}
+		const candidate = { ...next, [key]: prev };
+		if (reachableCombinations(config, candidate).length > 0) {
+			next = candidate;
+		}
+	});
+
+	return next;
+}
+
+/**
  * Friendly label lookup for a property value key.
  * @param {GroupConfig} config
  * @param {string} propKey

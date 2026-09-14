@@ -1,0 +1,1 @@
+COMPLETE: Task #8 done. A11y+theme polish + final build committed (1e58a085). frontend-nlM2dg1d.js / frontend-BtbWCXkz.css + manifest. Distinct CSS, contrast PASS, restNonce alias. See completion-report.md. All W2 tasks (#2/#4/#6/#8) complete.

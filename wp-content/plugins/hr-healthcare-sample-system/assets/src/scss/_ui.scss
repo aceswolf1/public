@@ -97,7 +97,15 @@
 			box-shadow: inset 0 0 0 1px var(--hrh-sample-color-green);
 		}
 
-		&.is-unavailable,
+		// Smart auto-switch hint: doesn't fit the current other-axis pick, but
+		// is still fully clickable (picking it re-selects the conflicting axis).
+		// Dimmed only — keep the pointer cursor and no strike-through so it does
+		// not read as blocked.
+		&.is-unavailable {
+			opacity: 0.5;
+		}
+
+		// Reserved for a genuinely disabled input (not used by the selector now).
 		&:has(input:disabled) {
 			opacity: 0.45;
 			cursor: not-allowed;

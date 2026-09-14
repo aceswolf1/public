@@ -7,6 +7,7 @@ import { el } from '../dom.js';
 import {
 	availableValues,
 	buildSpecData,
+	reconcileSelection,
 	resolve,
 	selectableKeys,
 } from '../resolver.js';
@@ -102,11 +103,20 @@ export function mountPropertySelector(container, options) {
 			if (current[prop.key] === value.key) {
 				input.checked = true;
 			}
+
+			// Native radio selection (mouse + keyboard) fires `change`; apply the
+			// Smart auto-switch reconcile there. We intentionally do NOT
+			// preventDefault: letting the browser own the `checked` state makes
+			// the `:has(input:checked)` highlight appear immediately on the pick.
+			// (A previous preventDefault approach was reverted by the browser's
+			// canceled-activation step, so the first pick looked unselected.)
+			// "Retract" is covered by the auto-switch model — choosing any other
+			// value re-selects and clears conflicts, so no click-to-deselect.
 			input.addEventListener('change', () => {
 				if (!input.checked) {
 					return;
 				}
-				current = { ...current, [prop.key]: value.key };
+				current = reconcileSelection(config, current, prop.key, value.key);
 				sync();
 			});
 
@@ -172,17 +182,22 @@ export function mountPropertySelector(container, options) {
 		skuOut.textContent = resolved.valid && resolved.sku ? resolved.sku : '-';
 		advanceBtn.disabled = !resolved.valid;
 
-		// Disable dead-end tiles per selectable axis.
+		// Smart auto-switch: every tile stays operable so the user is never
+		// trapped. Tiles that don't fit the CURRENT other-axis picks are dimmed
+		// as a hint (clicking one auto-switches the conflicting axis). We also
+		// drive `checked` from state here, since the click path preventDefaults
+		// the native toggle.
 		selectable.forEach((prop) => {
 			const available = availableValues(config, prop.key, current);
 			root.querySelectorAll(`.hrh-sample-tile[data-prop="${prop.key}"]`).forEach((tile) => {
 				const value = tile.getAttribute('data-value');
 				const input = tile.querySelector('input[type="radio"]');
-				const isAvailable = available.has(value);
-				tile.classList.toggle('is-unavailable', !isAvailable);
+				const fits = available.has(value);
+				tile.classList.toggle('is-unavailable', !fits);
 				if (input) {
-					input.disabled = !isAvailable;
-					input.setAttribute('aria-disabled', isAvailable ? 'false' : 'true');
+					input.checked = current[prop.key] === value;
+					input.disabled = false;
+					input.removeAttribute('aria-disabled');
 				}
 			});
 		});
