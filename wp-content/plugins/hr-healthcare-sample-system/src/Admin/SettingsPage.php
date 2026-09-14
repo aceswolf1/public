@@ -114,6 +114,9 @@ final class SettingsPage {
 			case 'import_commit':
 				$this->run_import_commit();
 				break;
+			case 'save_tags':
+				$this->save_tags();
+				break;
 		}
 	}
 
@@ -126,7 +129,7 @@ final class SettingsPage {
 		}
 
 		$tab     = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( (string) $_GET['tab'] ) ) : 'import'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab switch.
-		$allowed = array( 'import', 'configuration', 'setup', 'options' );
+		$allowed = array( 'import', 'configuration', 'tagging', 'setup', 'options' );
 
 		if ( ! in_array( $tab, $allowed, true ) ) {
 			$tab = 'import';
@@ -147,6 +150,7 @@ final class SettingsPage {
 				$tabs = array(
 					'import'        => __( 'Import', 'hr-healthcare-sample-system' ),
 					'configuration' => __( 'Configuration', 'hr-healthcare-sample-system' ),
+					'tagging'       => __( 'Page Tags', 'hr-healthcare-sample-system' ),
 					'setup'         => __( 'Setup & Usage', 'hr-healthcare-sample-system' ),
 					'options'       => __( 'Options viewer', 'hr-healthcare-sample-system' ),
 				);
@@ -166,6 +170,9 @@ final class SettingsPage {
 			switch ( $tab ) {
 				case 'configuration':
 					$this->render_configuration();
+					break;
+				case 'tagging':
+					$this->render_tagging();
 					break;
 				case 'setup':
 					$this->render_setup();
@@ -343,6 +350,70 @@ final class SettingsPage {
 	}
 
 	/**
+	 * Page Tags tab — bulk group → page assignment.
+	 */
+	private function render_tagging(): void {
+		$groups = Groups::all();
+		$map    = $this->image_map->map(); // slug => page_id.
+
+		echo '<h2>' . esc_html__( 'Page tags (bulk)', 'hr-healthcare-sample-system' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Assign each imported group to its product page. Saving here writes the same tag the metabox / Elementor control sets, activating the sample modal and cart on that page. Each group maps to one page.', 'hr-healthcare-sample-system' ) . '</p>';
+
+		if ( empty( $groups ) ) {
+			echo '<p>' . esc_html__( 'No groups yet — run an import first.', 'hr-healthcare-sample-system' ) . '</p>';
+			return;
+		}
+		?>
+		<form method="post">
+			<?php wp_nonce_field( self::NONCE_ACTION, self::NONCE_NAME ); ?>
+			<input type="hidden" name="hrh_sample_action" value="save_tags" />
+			<table class="widefat striped" style="max-width:820px;">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Group', 'hr-healthcare-sample-system' ); ?></th>
+						<th><?php esc_html_e( 'Product page', 'hr-healthcare-sample-system' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+				<?php
+				foreach ( $groups as $group ) :
+					$slug = (string) ( $group['slug'] ?? '' );
+					if ( '' === $slug ) {
+						continue;
+					}
+					$line         = (string) ( $group['product_line'] ?? '' );
+					$current_page = isset( $map[ $slug ] ) ? (int) $map[ $slug ] : 0;
+					$dropdown     = wp_dropdown_pages(
+						array(
+							'name'              => 'hrh_sample_tag_map[' . $slug . ']',
+							'id'                => 'hrh_sample_tag_' . sanitize_html_class( $slug ),
+							'selected'          => $current_page,
+							'show_option_none'  => esc_html__( '— None —', 'hr-healthcare-sample-system' ),
+							'option_none_value' => '0',
+							'echo'              => 0,
+						)
+					);
+					?>
+					<tr>
+						<td>
+							<code><?php echo esc_html( $slug ); ?></code>
+							<?php if ( '' !== $line ) : ?>
+								<br /><span class="description"><?php echo esc_html( $line ); ?></span>
+							<?php endif; ?>
+						</td>
+						<td><?php echo is_string( $dropdown ) ? $dropdown : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- core dropdown HTML. ?></td>
+					</tr>
+					<?php
+				endforeach;
+				?>
+				</tbody>
+			</table>
+			<?php submit_button( __( 'Save page assignments', 'hr-healthcare-sample-system' ) ); ?>
+		</form>
+		<?php
+	}
+
+	/**
 	 * Setup & Usage tab (static wiring guide).
 	 */
 	private function render_setup(): void {
@@ -483,6 +554,71 @@ final class SettingsPage {
 		$this->notices[] = array(
 			'type'    => 'success',
 			'message' => __( 'Configuration saved.', 'hr-healthcare-sample-system' ),
+		);
+	}
+
+	/**
+	 * Persist bulk group → page assignments (enforces one page per group).
+	 */
+	private function save_tags(): void {
+		// Nonce verified in handle_post().
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash -- keys/values sanitized per element below.
+		$raw_map = isset( $_POST['hrh_sample_tag_map'] ) && is_array( $_POST['hrh_sample_tag_map'] ) ? (array) $_POST['hrh_sample_tag_map'] : array();
+
+		$valid_slugs = array();
+		foreach ( Groups::all() as $group ) {
+			$slug = (string) ( $group['slug'] ?? '' );
+			if ( '' !== $slug ) {
+				$valid_slugs[ $slug ] = true;
+			}
+		}
+
+		$changed = 0;
+
+		foreach ( $raw_map as $slug => $page_id ) {
+			$slug = sanitize_title( (string) $slug );
+			if ( '' === $slug || ! isset( $valid_slugs[ $slug ] ) ) {
+				continue;
+			}
+
+			$target = absint( $page_id );
+
+			// Enforce one page per group: clear this slug from any other holder.
+			$holders = get_posts(
+				array(
+					'post_type'   => 'page',
+					'post_status' => 'any',
+					'numberposts' => -1,
+					'fields'      => 'ids',
+					'meta_key'    => ImageMap::META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+					'meta_value'  => $slug,              // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				)
+			);
+			foreach ( $holders as $holder_id ) {
+				if ( (int) $holder_id !== $target ) {
+					delete_post_meta( (int) $holder_id, ImageMap::META_KEY );
+					++$changed;
+				}
+			}
+
+			if ( $target > 0 && 'page' === get_post_type( $target ) ) {
+				$existing = (string) get_post_meta( $target, ImageMap::META_KEY, true );
+				if ( $existing !== $slug ) {
+					update_post_meta( $target, ImageMap::META_KEY, $slug );
+					++$changed;
+				}
+			}
+		}
+
+		$this->image_map->rebuild();
+
+		$this->notices[] = array(
+			'type'    => 'success',
+			'message' => sprintf(
+				/* translators: %d: number of page assignments changed. */
+				_n( '%d page assignment updated.', '%d page assignments updated.', $changed, 'hr-healthcare-sample-system' ),
+				$changed
+			),
 		);
 	}
 
