@@ -10,10 +10,12 @@ declare(strict_types=1);
 namespace HR_Healthcare\Sample_System;
 
 use HR_Healthcare\Sample_System\Admin\Metabox;
+use HR_Healthcare\Sample_System\Admin\PagesColumn;
 use HR_Healthcare\Sample_System\Admin\SettingsPage;
 use HR_Healthcare\Sample_System\Frontend\Assets;
 use HR_Healthcare\Sample_System\Frontend\CartShortcodes;
 use HR_Healthcare\Sample_System\Frontend\ProductModal;
+use HR_Healthcare\Sample_System\Integration\Elementor;
 use HR_Healthcare\Sample_System\Integration\GravityForms;
 use HR_Healthcare\Sample_System\Rest\GroupsController;
 use HR_Healthcare\Sample_System\Rest\ResolveController;
@@ -131,8 +133,12 @@ final class Plugin {
 
 		( new GravityForms() )->register();
 
+		// Elementor Page-Settings tagging (hooks are Elementor-gated, safe when inactive).
+		( new Elementor( $this->image_map() ) )->register();
+
 		if ( is_admin() ) {
 			( new Metabox() )->register();
+			( new PagesColumn() )->register();
 			( new SettingsPage( $this->image_map() ) )->register();
 		}
 	}
