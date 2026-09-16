@@ -671,10 +671,14 @@ final class SettingsPage {
 	private function run_import_commit(): void {
 		// Nonce verified in handle_post().
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		$token  = isset( $_POST['hrh_sample_token'] ) ? sanitize_key( wp_unslash( (string) $_POST['hrh_sample_token'] ) ) : '';
+		// Token is a mixed-case alphanumeric from wp_generate_password(); sanitize
+		// WITHOUT lowercasing (sanitize_key() would lowercase and never match the
+		// transient key set at preview time).
+		$token  = isset( $_POST['hrh_sample_token'] ) ? preg_replace( '/[^A-Za-z0-9]/', '', wp_unslash( (string) $_POST['hrh_sample_token'] ) ) : '';
+		$token  = is_string( $token ) ? $token : '';
 		$stored = '' !== $token ? get_transient( 'hrh_sample_import_' . $token ) : false;
 
-		if ( ! is_array( $stored ) || empty( $stored['plan'] ) || empty( $stored['path'] ) ) {
+		if ( ! is_array( $stored ) || empty( $stored['plan'] ) || ! is_array( $stored['plan'] ) ) {
 			$this->notices[] = array(
 				'type'    => 'error',
 				'message' => __( 'Import plan missing or expired — preview again.', 'hr-healthcare-sample-system' ),
@@ -682,17 +686,11 @@ final class SettingsPage {
 			return;
 		}
 
-		$path = (string) $stored['path'];
 		$plan = $stored['plan'];
+		$path = isset( $stored['path'] ) ? (string) $stored['path'] : '';
 
-		if ( ! is_readable( $path ) || ! is_array( $plan ) ) {
-			$this->notices[] = array(
-				'type'    => 'error',
-				'message' => __( 'Import plan missing or expired — preview again.', 'hr-healthcare-sample-system' ),
-			);
-			return;
-		}
-
+		// commit() applies the stored plan directly and does NOT re-read the
+		// uploaded file, so a purged temp file must never block the commit.
 		$importer = new Importer( $this->image_map );
 		$result   = $importer->commit( $path, $plan );
 
