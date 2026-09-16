@@ -140,7 +140,9 @@ button.hrh-sample-cart-icon {
 .hrh-sample-cart-summary {
   font-family: var(--hrh-sample-font, inherit);
   color: var(--hrh-sample-color-text, #1a1a1a);
-
+  .hrh-sample-card {
+    background: #e6e9ed;
+  }
   .hrh-sample-cart__list {
     margin: 0;
     padding: 0;
