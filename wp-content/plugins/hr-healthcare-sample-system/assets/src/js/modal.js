@@ -45,6 +45,28 @@ function liveRegion(modal) {
 }
 
 /**
+ * Visible notice inside the Review step (e.g. "already in your cart").
+ * @param {HTMLElement} modal
+ * @returns {HTMLElement|null}
+ */
+function reviewNotice(modal) {
+	return modal.querySelector('.hrh-sample-step[data-step="review"] .hrh-sample-step__notice');
+}
+
+/**
+ * @param {HTMLElement} modal
+ * @param {string} message Empty string clears + hides the notice.
+ */
+function setReviewNotice(modal, message) {
+	const notice = reviewNotice(modal);
+	if (!notice) {
+		return;
+	}
+	notice.textContent = message;
+	notice.hidden = message === '';
+}
+
+/**
  * Ensure the three-node step indicator exists and reflects `activeKey`.
  * @param {HTMLElement} modal
  * @param {string} activeKey
@@ -56,8 +78,11 @@ function renderSteps(modal, activeKey) {
 			className: 'hrh-sample-steps',
 			'aria-label': 'Progress',
 		});
-		const header = modal.querySelector('.hrh-sample-modal__header');
-		header?.after(list);
+		// Fallback insertion (the shell normally ships the <ol> already).
+		const optionsBox =
+			modal.querySelector('.hrh-sample-modal__options') ||
+			modal.querySelector('.hrh-sample-modal__content');
+		optionsBox?.prepend(list);
 	}
 
 	const activeIndex = STEPS.findIndex((step) => step.key === activeKey);
@@ -224,12 +249,9 @@ function createModalController(modal) {
 		}
 		step = 'review';
 		showStep(modal, 'review');
+		setReviewNotice(modal, ''); // fresh review — clear any prior block message.
 
-		const title = modal.querySelector('#hrh-sample-modal-title, .hrh-sample-modal__title');
-		if (title) {
-			title.textContent = 'Review Your Sample Request';
-		}
-
+		// Title stays the product name (server-rendered); step is shown by the indicator.
 		let dl = modal.querySelector('.hrh-sample-step[data-step="review"] .hrh-sample-card__specs');
 		const reviewSection = modal.querySelector('.hrh-sample-step[data-step="review"]');
 		if (!dl && reviewSection) {
@@ -255,11 +277,6 @@ function createModalController(modal) {
 	function goToConfirm() {
 		step = 'confirm';
 		showStep(modal, 'confirm');
-
-		const title = modal.querySelector('#hrh-sample-modal-title, .hrh-sample-modal__title');
-		if (title) {
-			title.textContent = 'Request a Sample';
-		}
 
 		announceModal(modal, 'Sample request has been added to your cart');
 		const focusTarget =
@@ -290,25 +307,22 @@ function createModalController(modal) {
 
 		const gate = canAddSelection(config.slug, selection.options, config);
 		if (!gate.ok) {
+			let message;
 			if (gate.reason === 'duplicate') {
-				announceModal(modal, `SKU ${gate.sku} is already in your cart.`);
+				message = 'This sample is already in your cart.';
 			} else if (gate.reason === 'cap') {
-				announceModal(modal, `Cart limit of ${gate.cap} items reached.`);
+				message = `You've reached the cart limit of ${gate.cap} samples.`;
 			} else {
-				announceModal(modal, 'Invalid combination. Please go back and adjust.');
+				message = 'This combination is unavailable. Please go back and adjust.';
 			}
+			setReviewNotice(modal, message); // visible feedback on the Review step.
+			announceModal(modal, message); // + screen-reader announcement.
 			return;
 		}
 
+		setReviewNotice(modal, '');
 		addSelection(config.slug, selection.options);
 		goToConfirm();
-	}
-
-	function resetTitle() {
-		const title = modal.querySelector('#hrh-sample-modal-title, .hrh-sample-modal__title');
-		if (title) {
-			title.textContent = 'Request a Sample';
-		}
 	}
 
 	/**
@@ -321,7 +335,6 @@ function createModalController(modal) {
 		selection = null;
 		seedCache(config);
 		setModalImage(modal, config);
-		resetTitle();
 		openDialog(modal, {
 			trigger: opts.trigger || null,
 			initialFocus: modal.querySelector('.hrh-sample-modal__close'),
@@ -333,7 +346,6 @@ function createModalController(modal) {
 		destroySelector();
 		selection = null;
 		step = 'select';
-		resetTitle();
 		closeDialog(modal);
 	}
 

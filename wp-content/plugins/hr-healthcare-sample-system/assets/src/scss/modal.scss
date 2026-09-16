@@ -1,158 +1,267 @@
 /**
- * Product-modal styles.
- * Distinct from admin.scss so frontend ships its own CSS chunk.
- * Tokens/font inherit via _tokens on `.hrh-sample-modal` itself (§18).
+ * Product-modal styles — intentionally empty.
+ *
+ * The modal DOM structure is printed by Frontend/ProductModal.php:
+ *   .hrh-sample-modal                 main container / dialog root
+ *     .hrh-sample-modal__backdrop
+ *     .hrh-sample-modal__media        image container ( > img )
+ *     .hrh-sample-modal__content      content container
+ *       .hrh-sample-modal__close
+ *       .hrh-sample-modal__title
+ *       .hrh-sample-modal__options    options container
+ *         .hrh-sample-steps           step indicator ( li.is-active / .is-complete )
+ *         .hrh-sample-modal__body     options list / step panels
+ *           .hrh-sample-step[data-step="select|review|confirm"]
+ *             .hrh-sample-selector    (tiles mount here)
+ *             .hrh-sample-card__specs (review)
+ *             .hrh-sample-success / .hrh-sample-success__msg (confirm)
+ *             .hrh-sample-step__actions
+ *         .hrh-sample-selector__foot  sku + next button ([data-selector-foot])
+ *     .hrh-sample-sr-only[role="status"]
+ *
+ * Author modal CSS below. `[hidden]` hides the modal by default; the JS
+ * removes it on open. Tokens/a11y helpers come from _tokens / _a11y.
  */
 
-@use 'ui';
-
 .hrh-sample-modal {
-	position: fixed;
-	inset: 0;
-	z-index: 100000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--hrh-sample-space-4);
-	font-family: var(--hrh-sample-font, inherit);
-	color: var(--hrh-sample-color-text, #1a1a1a);
-}
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--hrh-sample-space-4);
+  font-family: var(--hrh-sample-font, inherit);
+  color: var(--hrh-sample-color-text, #1a1a1a);
 
-.hrh-sample-modal[hidden] {
-	display: none !important;
-}
+  &[hidden] {
+    display: none !important;
+  }
 
-.hrh-sample-modal__backdrop {
-	position: absolute;
-	inset: 0;
-	background: rgba(11, 31, 51, 0.55);
-}
+  &__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgb(255, 255, 255);
+  }
 
-.hrh-sample-modal__dialog {
-	position: relative;
-	z-index: 1;
-	width: min(56rem, 100%);
-	max-height: min(90vh, 52rem);
-	overflow: auto;
-	border-radius: var(--hrh-sample-radius-lg);
-	background: var(--hrh-sample-color-surface);
-	box-shadow: var(--hrh-sample-shadow-md);
-	padding: var(--hrh-sample-space-5);
-}
+  &__dialog {
+    position: relative;
+    z-index: 1;
+    width: min(80rem, 100%);
+    max-height: min(90vh, 52rem);
+    background: var(--hrh-sample-color-surface);
+    padding: var(--hrh-sample-space-5);
+    display: grid;
+    grid-template-areas: "header header" "media content";
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    column-gap: 70px;
+    row-gap: 10px;
+    position: relative;
+  }
 
-.hrh-sample-modal__header {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: var(--hrh-sample-space-3);
-	margin-bottom: var(--hrh-sample-space-4);
-}
+  &__title {
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: -2.3%;
+    margin-bottom: 18px;
+    margin-top: 0;
+  }
 
-.hrh-sample-modal__title {
-	margin: 0;
-	font-family: var(--hrh-sample-heading-font);
-	color: var(--hrh-sample-color-navy);
-	font-size: 1.35rem;
-}
+  button.hrh-sample-modal__close {
+    grid-area: header;
+    align-self: end;
+    width: fit-content;
+    font-size: 2.5rem;
+    line-height: 0;
+    padding: 0 0 10px 0;
+    background-color: transparent;
+    color: #082240;
+    font-weight: 100;
+    justify-self: flex-end;
+  }
 
-.hrh-sample-modal__close {
-	appearance: none;
-	border: 0;
-	background: transparent;
-	color: var(--hrh-sample-color-text-muted);
-	font: inherit;
-	font-size: 1.5rem;
-	line-height: 1;
-	cursor: pointer;
-	padding: var(--hrh-sample-space-1);
-}
+  &__media {
+    grid-area: media;
+    background: var(--hrh-sample-color-surface-muted);
+    display: flex;
+    justify-content: center;
+    align-items: center;
 
-.hrh-sample-steps {
-	display: flex;
-	gap: var(--hrh-sample-space-3);
-	list-style: none;
-	margin: 0 0 var(--hrh-sample-space-5);
-	padding: 0;
-	color: var(--hrh-sample-color-text-muted);
-	font-size: 0.9rem;
+    img {
+      display: block;
+      width: auto;
+      aspect-ratio: 1 / 1;
+      max-width: 500px;
+    }
+  }
 
-	li {
-		position: relative;
-		padding-bottom: var(--hrh-sample-space-2);
-	}
+  &__content {
+    grid-area: content;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
 
-	/* Active step — color + underline (not color-only). */
-	li.is-active,
-	li[aria-current='step'] {
-		color: var(--hrh-sample-color-navy);
-		font-weight: 600;
-		border-bottom: 2px solid var(--hrh-sample-color-green);
-	}
+  &__options {
+    background: var(--hrh-sample-color-surface-muted);
+    padding: 30px 40px;
+  }
 
-	/* Completed steps — checkmark + muted navy (not color-only). */
-	li.is-complete {
-		color: var(--hrh-sample-color-navy-soft);
-		font-weight: 600;
+  .hrh-sample-steps {
+    display: flex;
+    justify-content: flex-start;
+    list-style: none;
+    gap: 10px;
+    padding: 0;
+    margin-bottom: 44px;
 
-		&::before {
-			content: '✓ ';
-			color: var(--hrh-sample-color-green);
-		}
-	}
-}
+    li {
+      color: #586b85;
+      font-size: 20px;
+      font-weight: 300;
+      display: flex;
+      align-items: center;
+      gap: 10px;
 
-.hrh-sample-modal__layout {
-	display: grid;
-	grid-template-columns: minmax(10rem, 16rem) 1fr;
-	gap: var(--hrh-sample-space-5);
-}
+      &:after {
+        content: "";
+        display: inline-block;
+        height: 1px;
+        width: 20px;
+        background-color: #586b85;
+      }
 
-.hrh-sample-modal__media img {
-	display: block;
-	width: 100%;
-	height: auto;
-	border-radius: var(--hrh-sample-radius-md);
-	background: var(--hrh-sample-color-surface-muted);
-}
+      &:last-child:after {
+        display: none;
+      }
 
-.hrh-sample-step[hidden] {
-	display: none !important;
-}
+      &.is-active {
+        color: #00b189;
+        font-weight: 500;
+      }
+    }
+  }
 
-.hrh-sample-step__actions {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: var(--hrh-sample-space-2);
-	margin-top: var(--hrh-sample-space-5);
-}
+  .hrh-sample-step {
+    &__review {
+      .hrh-sample-card__specs {
+        background-color: white;
+        border-color: #dddddd;
+        padding: 18px;
+        margin-bottom: 20px;
+      }
+    }
 
-.hrh-sample-success {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 3.5rem;
-	height: 3.5rem;
-	margin-bottom: var(--hrh-sample-space-3);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--hrh-sample-color-green) 18%, white);
-	color: var(--hrh-sample-color-green);
-	font-size: 1.75rem;
-	font-weight: 700;
+    &__actions {
+      display: flex;
+      justify-content: space-between;
+    }
 
-	&:empty::before {
-		content: '✓';
-	}
-}
+    &__confirmation {
+      .hrh-sample-success {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 18px;
+      }
 
-.hrh-sample-success__msg {
-	margin: 0 0 var(--hrh-sample-space-4);
-	font-size: 1.1rem;
-	color: var(--hrh-sample-color-navy);
-}
+      .hrh-sample-success__msg {
+        text-align: center;
+        font-size: 20px;
+        font-weight: 300;
+        margin-bottom: 70px;
+      }
+    }
+  }
 
-@media (max-width: 640px) {
-	.hrh-sample-modal__layout {
-		grid-template-columns: 1fr;
-	}
+  @media screen and (max-width: 1280px) {
+    &__dialog {
+      gap: 20px;
+      grid-template-columns: 300px 1fr;
+    }
+
+    &__media {
+      padding: 1rem;
+
+      img {
+        max-width: 100%;
+      }
+    }
+  }
+
+  @media screen and (max-width: 880px) {
+    h2.hrh-sample-modal__title {
+      font-size: 32px;
+    }
+
+    .hrh-sample-steps {
+      flex-direction: column;
+
+      li {
+        &:after {
+          content: none;
+        }
+      }
+    }
+
+    &__dialog {
+      width: 100%;
+      max-height: initial;
+      grid-template-columns: 1fr;
+      grid-template-areas: "header" "media" "content";
+      margin-bottom: 2rem;
+      margin-top: 2rem;
+    }
+
+    &__media {
+      width: 100%;
+      max-height: 200px;
+
+      img {
+        max-height: 100%;
+      }
+    }
+  }
+
+  @media screen and (max-width: 550px) {
+    &__options {
+      padding: 30px;
+    }
+
+    .hrh-sample-prop__tiles {
+      flex-direction: column;
+    }
+
+    dl.hrh-sample-card__specs {
+      div {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+
+    .hrh-sample-step__review {
+      .hrh-sample-step__actions {
+        flex-direction: column-reverse;
+        gap: 20px;
+
+        button[data-action="back"] {
+          background: transparent;
+          color: #051d2e;
+          border: 1px solid #051d2e;
+
+          &:hover:not(:disabled) {
+            background: #babcc8;
+          }
+        }
+      }
+    }
+
+    .hrh-sample-step__confirmation {
+      .hrh-sample-step__actions {
+        flex-direction: column-reverse;
+        gap: 20px;
+      }
+    }
+  }
 }

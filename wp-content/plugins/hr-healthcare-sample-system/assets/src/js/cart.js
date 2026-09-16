@@ -615,6 +615,77 @@ export async function hydrateSummaries() {
 /**
  * Document-level cart wiring: icon open, dialog actions, Esc, count refresh.
  */
+/**
+ * Populate the Gravity Forms hidden "selections" field on the checkout page.
+ *
+ * The field carries the marker class `hrh-sample-field-selections` (on the GF
+ * field container or the input itself). We write the cart cookie's selections
+ * JSON into it so the GF submit hook can validate + resolve server-side. Only
+ * this field is frontend-populated; `-readable` / `-json` are written by the
+ * server hook at submit. No-ops on any page without the field.
+ */
+export function initCheckout() {
+	if (typeof document === 'undefined') {
+		return;
+	}
+
+	const MARKER = 'hrh-sample-field-selections';
+
+	const findInput = () => {
+		const onInput = document.querySelector(
+			`input.${MARKER}, textarea.${MARKER}, select.${MARKER}`
+		);
+		if (onInput) {
+			return onInput;
+		}
+		const holder = document.querySelector(`.${MARKER}`);
+		if (!holder) {
+			return null;
+		}
+		return holder.matches('input, textarea, select')
+			? holder
+			: holder.querySelector('input, textarea, select');
+	};
+
+	const populate = () => {
+		const input = findInput();
+		if (!input) {
+			return;
+		}
+		input.value = JSON.stringify(readSelections());
+	};
+
+	// Nothing to do if this page has no checkout selections field.
+	if (!findInput()) {
+		return;
+	}
+
+	populate();
+	window.addEventListener(CART_CHANGED_EVENT, populate);
+
+	// Re-sync immediately before submit (capture phase runs before GF's own
+	// handler, covering both standard and GF-AJAX submissions).
+	document.addEventListener(
+		'submit',
+		(event) => {
+			const form = /** @type {HTMLElement} */ (event.target);
+			if (form && typeof form.querySelector === 'function' && form.querySelector(`.${MARKER}`)) {
+				populate();
+			}
+		},
+		true
+	);
+
+	// On a successful AJAX confirmation, empty the cart + refresh the UI live
+	// (the server also clears the cookie; this updates the header count without
+	// a reload). Standard (non-AJAX) submits are covered by the server clear.
+	if (window.jQuery) {
+		window.jQuery(document).on('gform_confirmation_loaded', () => {
+			writeSelections([]);
+		});
+	}
+}
+
 export function initCart() {
 	seedFromLocalized();
 	refreshCartCounts();

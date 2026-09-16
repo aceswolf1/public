@@ -4,21 +4,21 @@
     "src": "assets/src/images/product-placeholder.png"
   },
   "assets/src/js/admin.js": {
-    "file": "assets/admin-ohFLNX-i.js",
+    "file": "assets/admin-DOPdIE_G.js",
     "name": "admin",
     "src": "assets/src/js/admin.js",
     "isEntry": true,
     "css": [
-      "assets/admin-8AcgqeSS.css"
+      "assets/admin-CvzZFT84.css"
     ]
   },
   "assets/src/js/frontend.js": {
-    "file": "assets/frontend-9-vgX1d-.js",
+    "file": "assets/frontend-BF-xpdEo.js",
     "name": "frontend",
     "src": "assets/src/js/frontend.js",
     "isEntry": true,
     "css": [
-      "assets/frontend-Ctu6oWd2.css"
+      "assets/frontend-BcVJWHAs.css"
     ],
     "assets": [
       "assets/product-placeholder-DSuYAMaS.png"

@@ -14,7 +14,7 @@ import * as a11y from './a11y.js';
 import * as api from './api.js';
 import * as cart from './cart.js';
 import { initModal } from './modal.js';
-import { initCart } from './cart.js';
+import { initCart, initCheckout } from './cart.js';
 import { mountPropertySelector } from './components/PropertySelector.js';
 import { renderSpecBlock, fillSpecBlock } from './components/SpecBlock.js';
 import {
@@ -75,6 +75,7 @@ export function bootFrontend() {
 		ensureSurfaceRoots();
 		initModal();
 		initCart();
+		initCheckout();
 	};
 
 	if (document.readyState === 'loading') {

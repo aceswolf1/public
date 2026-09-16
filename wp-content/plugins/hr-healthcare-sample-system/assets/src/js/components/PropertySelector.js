@@ -59,6 +59,7 @@ export function mountPropertySelector(container, options) {
 		showAdvance = true,
 		advanceLabel = 'Finish Selection',
 		namePrefix = nextId('sel'),
+		footContainer = null,
 		onChange = null,
 		onAdvance = null,
 		announce = null,
@@ -168,14 +169,21 @@ export function mountPropertySelector(container, options) {
 		onAdvance?.(state);
 	});
 
-	root.append(
-		el('div', { className: 'hrh-sample-selector__foot' }, [
-			el('p', { className: 'hrh-sample-selector__sku' }, ['SKU: ', skuOut]),
-			advanceBtn,
-		])
-	);
+	const foot = el('div', { className: 'hrh-sample-selector__foot' }, [
+		el('p', { className: 'hrh-sample-selector__sku' }, ['SKU: ', skuOut]),
+		advanceBtn,
+	]);
 
 	container.replaceChildren(root);
+
+	// The sku + advance foot may live in a shell-owned container (the modal's
+	// "sku-and-next" section) or, by default, inside the selector root itself
+	// (e.g. the cart's inline edit).
+	if (footContainer) {
+		footContainer.replaceChildren(foot);
+	} else {
+		root.append(foot);
+	}
 
 	function sync() {
 		const resolved = resolve(config, current);
@@ -240,6 +248,9 @@ export function mountPropertySelector(container, options) {
 		},
 		destroy() {
 			container.replaceChildren();
+			if (footContainer) {
+				footContainer.replaceChildren();
+			}
 		},
 	};
 }

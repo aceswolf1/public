@@ -36,8 +36,41 @@ final class GravityForms {
 	public function register(): void {
 		add_filter( 'gform_validation', array( $this, 'validate' ) );
 		add_action( 'gform_pre_submission', array( $this, 'pre_submission' ) );
+		add_action( 'gform_after_submission', array( $this, 'clear_cart_cookie' ), 10, 2 );
 		add_filter( 'gform_entry_list_columns', array( $this, 'entry_list_columns' ), 10, 2 );
 		add_filter( 'gform_entries_column_filter', array( $this, 'entries_column_filter' ), 10, 5 );
+	}
+
+	/**
+	 * Empty the sample cart cookie after a successful checkout submission.
+	 *
+	 * Runs during submission processing (before output), so the expiring
+	 * Set-Cookie reaches the browser for both standard and AJAX submits. The
+	 * frontend also clears + refreshes the UI on the AJAX confirmation.
+	 *
+	 * @param array<string, mixed> $entry Created entry (unused).
+	 * @param array<string, mixed> $form  GF form.
+	 */
+	public function clear_cart_cookie( $entry, $form ): void {
+		unset( $entry );
+
+		if ( ! is_array( $form ) || ! $this->is_checkout_form( $form ) ) {
+			return;
+		}
+
+		if ( ! headers_sent() ) {
+			setcookie(
+				'hrh_sample_cart',
+				'',
+				array(
+					'expires'  => time() - HOUR_IN_SECONDS,
+					'path'     => '/',
+					'samesite' => 'Lax',
+				)
+			);
+		}
+
+		unset( $_COOKIE['hrh_sample_cart'] );
 	}
 
 	/**
@@ -141,7 +174,7 @@ final class GravityForms {
 		}
 
 		$readable = $this->format_readable( $resolved );
-		$json     = wp_json_encode( $resolved );
+		$json     = wp_json_encode( $resolved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 
 		if ( ! is_string( $json ) ) {
 			$json = '[]';
