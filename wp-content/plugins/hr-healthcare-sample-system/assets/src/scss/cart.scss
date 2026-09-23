@@ -16,8 +16,16 @@ button.hrh-sample-cart-icon {
   min-height: 2.75rem;
   padding: var(--hrh-sample-space-2);
   color: var(--hrh-sample-color-navy);
+  border: 1px solid transparent;
   cursor: pointer;
   font: inherit;
+  transition: none;
+
+  &:hover {
+    background-color: transparent;
+    border: 1px solid white;
+    border-radius: 0;
+  }
 }
 
 .hrh-sample-cart-icon__count {
@@ -74,7 +82,7 @@ button.hrh-sample-cart-icon {
 
 .hrh-sample-cart__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--hrh-sample-space-3);
   margin-bottom: var(--hrh-sample-space-4);
@@ -84,19 +92,29 @@ button.hrh-sample-cart-icon {
   margin: 0;
   font-family: var(--hrh-sample-heading-font);
   color: var(--hrh-sample-color-navy);
-  font-size: 1.35rem;
+  font-size: 28px;
 }
 
-.hrh-sample-cart__close {
+button.hrh-sample-cart__close {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--hrh-sample-color-text-muted);
+  color: #051d2e;
   font: inherit;
-  font-size: 1.5rem;
+  font-size: 3rem;
   line-height: 1;
   cursor: pointer;
   padding: var(--hrh-sample-space-1);
+
+  &:hover,
+  &:focus {
+    background: transparent;
+    color: red;
+  }
+
+  &:focus {
+    color: #051d2e;
+  }
 }
 
 .hrh-sample-cart__list {

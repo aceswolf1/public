@@ -14,6 +14,7 @@ import * as a11y from './a11y.js';
 import * as api from './api.js';
 import * as cart from './cart.js';
 import { initModal } from './modal.js';
+import { initPicker } from './picker.js';
 import { initCart, initCheckout } from './cart.js';
 import { mountPropertySelector } from './components/PropertySelector.js';
 import { renderSpecBlock, fillSpecBlock } from './components/SpecBlock.js';
@@ -32,6 +33,7 @@ export {
 	api,
 	cart,
 	initModal,
+	initPicker,
 	initCart,
 	mountPropertySelector,
 	renderSpecBlock,
@@ -53,7 +55,7 @@ export {
  */
 function ensureSurfaceRoots() {
 	document
-		.querySelectorAll('.hrh-sample-modal, .hrh-sample-cart, .hrh-sample-cart-summary')
+		.querySelectorAll('.hrh-sample-cart, .hrh-sample-cart-summary')
 		.forEach((node) => {
 			node.classList.add('hrh-sample-root');
 		});
@@ -73,7 +75,7 @@ export function bootFrontend() {
 
 	const start = () => {
 		ensureSurfaceRoots();
-		initModal();
+		initPicker();
 		initCart();
 		initCheckout();
 	};
@@ -92,6 +94,7 @@ export function bootFrontend() {
 		api,
 		cart,
 		initModal,
+		initPicker,
 		initCart,
 		mountPropertySelector,
 		renderSpecBlock,

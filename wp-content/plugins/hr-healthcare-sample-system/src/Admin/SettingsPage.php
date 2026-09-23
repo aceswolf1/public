@@ -357,7 +357,7 @@ final class SettingsPage {
 		$map    = $this->image_map->map(); // slug => page_id.
 
 		echo '<h2>' . esc_html__( 'Page tags (bulk)', 'hr-healthcare-sample-system' ) . '</h2>';
-		echo '<p>' . esc_html__( 'Assign each imported group to its product page. Saving here writes the same tag the metabox / Elementor control sets, activating the sample modal and cart on that page. Each group maps to one page.', 'hr-healthcare-sample-system' ) . '</p>';
+		echo '<p>' . esc_html__( 'Assign each imported group to its product page. Saving here writes the same tag the metabox / Elementor control sets, activating the sample picker and cart on that page. Each group maps to one page.', 'hr-healthcare-sample-system' ) . '</p>';
 
 		if ( empty( $groups ) ) {
 			echo '<p>' . esc_html__( 'No groups yet — run an import first.', 'hr-healthcare-sample-system' ) . '</p>';
@@ -418,13 +418,13 @@ final class SettingsPage {
 	 */
 	private function render_setup(): void {
 		?>
-		<h2><?php esc_html_e( 'Modal trigger', 'hr-healthcare-sample-system' ); ?></h2>
+		<h2><?php esc_html_e( 'Trigger button', 'hr-healthcare-sample-system' ); ?></h2>
 		<p>
 			<?php
 			echo wp_kses(
 				sprintf(
 					/* translators: %s: CSS class name wrapped in code tags */
-					__( 'Add the CSS class %s to any Elementor button on a product page. JS binds via document delegation.', 'hr-healthcare-sample-system' ),
+					__( 'Add the CSS class %s to any Elementor button on a product page. Clicking it triggers the section-swap picker. The class name is kept for backward compatibility with existing buttons.', 'hr-healthcare-sample-system' ),
 					'<code>hrh-sample-open-modal</code>'
 				),
 				array( 'code' => array() )
@@ -432,14 +432,58 @@ final class SettingsPage {
 			?>
 		</p>
 
+		<h2><?php esc_html_e( 'Section-swap setup', 'hr-healthcare-sample-system' ); ?></h2>
+		<p><?php esc_html_e( 'In Elementor, place two sibling sections inside a parent container set to position: relative:', 'hr-healthcare-sample-system' ); ?></p>
+		<ol>
+			<li>
+				<?php
+				echo wp_kses(
+					sprintf(
+						/* translators: %s: CSS class wrapped in code */
+						__( '%s — add this CSS class (Advanced → CSS Classes) to the button section. This section is visible by default and hidden when the picker opens.', 'hr-healthcare-sample-system' ),
+						'<code>hrh-sample-trigger-section</code>'
+					),
+					array( 'code' => array() )
+				);
+				?>
+			</li>
+			<li>
+				<?php
+				echo wp_kses(
+					sprintf(
+						/* translators: %s: CSS class wrapped in code */
+						__( '%s — add this CSS class to an adjacent section. This section starts hidden and swaps in when the button is clicked. Drop the %s shortcode inside it.', 'hr-healthcare-sample-system' ),
+						'<code>hrh-sample-picker-section</code>',
+						'<code>[hrh_sample_picker]</code>'
+					),
+					array( 'code' => array() )
+				);
+				?>
+			</li>
+		</ol>
+		<p><?php esc_html_e( 'The parent container must have position: relative (Elementor → Advanced → Positioning) so the hidden section\'s absolute positioning stays within bounds.', 'hr-healthcare-sample-system' ); ?></p>
+
 		<h2><?php esc_html_e( 'Shortcodes', 'hr-healthcare-sample-system' ); ?></h2>
 		<ul>
 			<li>
 				<?php
 				echo wp_kses(
 					sprintf(
+						/* translators: 1: shortcode, 2: shortcode with attribute example */
+						__( '%1$s — inline 3-step property picker for section-swap mode. Reads the page\'s group tag automatically. Override with %2$s.', 'hr-healthcare-sample-system' ),
+						'<code>[hrh_sample_picker]</code>',
+						'<code>[hrh_sample_picker group="your-slug"]</code>'
+					),
+					array( 'code' => array() )
+				);
+				?>
+			</li>
+			<li>
+				<?php
+				echo wp_kses(
+					sprintf(
 						/* translators: %s: shortcode */
-						__( '%s — header mini-cart (icon + count + centered cart dialog).', 'hr-healthcare-sample-system' ),
+						__( '%s — header mini-cart (icon + count + cart dialog).', 'hr-healthcare-sample-system' ),
 						'<code>[hrh_sample_cart]</code>'
 					),
 					array( 'code' => array() )
@@ -461,7 +505,7 @@ final class SettingsPage {
 		</ul>
 
 		<h2><?php esc_html_e( 'Activation rule', 'hr-healthcare-sample-system' ); ?></h2>
-		<p><?php esc_html_e( 'A page only loads the modal/cart machinery when it has a group tag set via the Sample System metabox. Untagged pages are inert by design.', 'hr-healthcare-sample-system' ); ?></p>
+		<p><?php esc_html_e( 'A page only loads the picker and cart machinery when it has a group tag set via the Sample System metabox, the Elementor Page Settings control, or the Page Tags tab. Untagged pages are inert — no JS runs, no markup is injected.', 'hr-healthcare-sample-system' ); ?></p>
 
 		<h2><?php esc_html_e( 'Gravity Forms markers', 'hr-healthcare-sample-system' ); ?></h2>
 		<p><?php esc_html_e( 'Add these three fields to the client\'s existing checkout form. Set each field\'s Custom CSS Class under Appearance. The plugin never creates or modifies the form — it only hooks the configured form ID and locates fields by these classes.', 'hr-healthcare-sample-system' ); ?></p>
@@ -472,7 +516,7 @@ final class SettingsPage {
 			</li>
 			<li>
 				<strong><code>hrh-sample-field-readable</code></strong> —
-				<?php esc_html_e( 'Hidden or admin-only field. Hook-written multi-line fulfillment summary (product name, SKU, HCPCS, selected properties, sample amount as Quantity). This is the dashboard fulfillment interface.', 'hr-healthcare-sample-system' ); ?>
+				<?php esc_html_e( 'Paragraph Text field (set to admin-only). Hook-written multi-line fulfillment summary (product name, SKU, HCPCS, selected properties, quantity). Use Paragraph Text (not Single Line Text) so line breaks render correctly in GF entries.', 'hr-healthcare-sample-system' ); ?>
 			</li>
 			<li>
 				<strong><code>hrh-sample-field-json</code></strong> —

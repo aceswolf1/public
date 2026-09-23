@@ -24,7 +24,7 @@
     text-decoration: none;
 
     &:hover:not(:disabled) {
-      background: #babcc8;
+      background: #848484;
     }
 
     &:disabled,
@@ -39,7 +39,7 @@
     color: #fff;
 
     &:hover:not(:disabled) {
-      background: #babcc8;
+      background: #848484;
     }
   }
 
@@ -130,16 +130,21 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--hrh-sample-space-3);
-    margin-top: var(--hrh-sample-space-2);
+    margin-top: -6px;
     width: 100%;
   }
 
   .hrh-sample-selector__sku {
     margin: 0;
-    color: #00b189;
+    color: #c6c6c6;
     font-variant-numeric: tabular-nums;
     text-transform: uppercase;
     font-size: 25px;
+    transition: color 150ms ease;
+
+    &.is-resolved {
+      color: #00b189;
+    }
   }
 
   .hrh-sample-card {
@@ -198,7 +203,7 @@
         border: 1px solid #051d2e;
 
         &:hover:not(:disabled) {
-          background: #babcc8;
+          background: #848484;
         }
       }
     }
@@ -252,5 +257,60 @@
     background-color: white;
     display: flex;
     align-items: flex-start;
+  }
+}
+
+// ─── Section-swap (picker mode) ──────────────────────────────────────────────
+// Applied via Elementor Advanced → CSS Classes. The parent container must be
+// position: relative so the absolute-positioned hidden section stays in place.
+
+// Strip the overlay behaviour from .hrh-sample-modal when it is the inline
+// picker root. All descendant CSS (steps, actions, close btn, etc.) continues
+// to apply unchanged because .hrh-sample-modal is still present in the DOM.
+.hrh-sample-picker-section .hrh-sample-modal {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  padding: 0;
+  display: block;
+
+  &__backdrop {
+    display: none;
+  }
+}
+
+.hrh-sample-trigger-section {
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+
+  &.is-hidden {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+.hrh-sample-picker-section {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+
+  &.is-open {
+    position: relative !important;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
 }

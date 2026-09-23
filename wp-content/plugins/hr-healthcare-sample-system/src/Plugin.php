@@ -14,7 +14,7 @@ use HR_Healthcare\Sample_System\Admin\PagesColumn;
 use HR_Healthcare\Sample_System\Admin\SettingsPage;
 use HR_Healthcare\Sample_System\Frontend\Assets;
 use HR_Healthcare\Sample_System\Frontend\CartShortcodes;
-use HR_Healthcare\Sample_System\Frontend\ProductModal;
+use HR_Healthcare\Sample_System\Frontend\ProductPicker;
 use HR_Healthcare\Sample_System\Integration\Elementor;
 use HR_Healthcare\Sample_System\Integration\GravityForms;
 use HR_Healthcare\Sample_System\Rest\GroupsController;
@@ -124,7 +124,7 @@ final class Plugin {
 		$this->image_map()->register();
 		$this->assets()->register();
 
-		( new ProductModal( $this->assets() ) )->register();
+		( new ProductPicker( $this->assets() ) )->register();
 		( new CartShortcodes( $this->assets() ) )->register();
 
 		$groups  = new GroupsController( $this->image_map() );

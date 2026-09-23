@@ -562,7 +562,12 @@ export async function openCart(dialog, opts = {}) {
 
 	seedFromLocalized();
 	syncCheckoutButton(dialog);
-	openDialog(dialog, { trigger: opts.trigger || null });
+	// Focus the dialog container so screen readers announce it, without
+	// triggering a visible focus ring on the first interactive child (close btn).
+	if (!dialog.hasAttribute('tabindex')) {
+		dialog.setAttribute('tabindex', '-1');
+	}
+	openDialog(dialog, { trigger: opts.trigger || null, initialFocus: dialog });
 
 	const list = dialog.querySelector('.hrh-sample-cart__list');
 	if (list) {

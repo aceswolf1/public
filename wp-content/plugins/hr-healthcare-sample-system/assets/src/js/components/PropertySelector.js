@@ -146,6 +146,7 @@ export function mountPropertySelector(container, options) {
 	});
 
 	const skuOut = el('span', { 'data-sku-out': '', text: '-' });
+	const skuLine = el('p', { className: 'hrh-sample-selector__sku' }, ['SKU: ', skuOut]);
 	const advanceBtn = el('button', {
 		type: 'button',
 		className: 'hrh-sample-btn hrh-sample-btn--primary',
@@ -170,7 +171,7 @@ export function mountPropertySelector(container, options) {
 	});
 
 	const foot = el('div', { className: 'hrh-sample-selector__foot' }, [
-		el('p', { className: 'hrh-sample-selector__sku' }, ['SKU: ', skuOut]),
+		skuLine,
 		advanceBtn,
 	]);
 
@@ -187,7 +188,9 @@ export function mountPropertySelector(container, options) {
 
 	function sync() {
 		const resolved = resolve(config, current);
-		skuOut.textContent = resolved.valid && resolved.sku ? resolved.sku : '-';
+		const hasSku = !!(resolved.valid && resolved.sku);
+		skuOut.textContent = hasSku ? resolved.sku : '-';
+		skuLine.classList.toggle('is-resolved', hasSku);
 		advanceBtn.disabled = !resolved.valid;
 
 		// Smart auto-switch: every tile stays operable so the user is never
