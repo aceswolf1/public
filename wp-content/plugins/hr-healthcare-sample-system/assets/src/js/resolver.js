@@ -50,12 +50,21 @@ export function selectableKeys(config) {
 
 /**
  * True when every selectable property has a non-empty selection.
+ *
+ * Edge case: a group with a single combination has NO selectable properties
+ * (every axis collapses to one value, so nothing is selectable). There is
+ * nothing for the user to pick, so an empty selection is inherently complete
+ * as long as the group actually has a combination to resolve to.
+ *
  * @param {GroupConfig} config
  * @param {Record<string, string>} options
  */
 export function isComplete(config, options = {}) {
 	const keys = selectableKeys(config);
-	return keys.length > 0 && keys.every((key) => Boolean(options[key]));
+	if (keys.length === 0) {
+		return Array.isArray(config?.combinations) && config.combinations.length > 0;
+	}
+	return keys.every((key) => Boolean(options[key]));
 }
 
 /**

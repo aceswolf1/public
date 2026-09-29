@@ -13,12 +13,12 @@
     ]
   },
   "assets/src/js/frontend.js": {
-    "file": "assets/frontend-rB8qdDWq.js",
+    "file": "assets/frontend-BDt9YIHV.js",
     "name": "frontend",
     "src": "assets/src/js/frontend.js",
     "isEntry": true,
     "css": [
-      "assets/frontend-DsxTn8Oz.css"
+      "assets/frontend-CCKZFLAS.css"
     ],
     "assets": [
       "assets/product-placeholder-DSuYAMaS.png"
